@@ -36,9 +36,10 @@ jobs:
       fail-fast: true
       matrix:
         include:
-          - name: Build and test
+          - name: Test
             flags: ""
-          - name: NonisolatedNonsendingByDefault
+          # Builds and tests under Swift's upcoming concurrency default.
+          - name: Concurrency
             flags: -Xswiftc -enable-upcoming-feature -Xswiftc NonisolatedNonsendingByDefault
     steps:
       - uses: actions/checkout@v5
@@ -46,15 +47,12 @@ jobs:
       - name: No unsafeFlags in Package.swift
         run: "! grep -n unsafeFlags Package.swift"
 
-      - name: Build with tests, zero warnings
+      # One SwiftPM invocation builds and tests; any warning fails it.
+      - name: Build and test, zero warnings
         run: |
           source scripts/common.sh
-          swiftpm_no_warnings build swift build --build-tests -Xswiftc -warnings-as-errors ${{ matrix.flags }}
-
-      - name: Test
-        run: |
-          source scripts/common.sh
-          with_timeout 900 swift test --skip-build --parallel --skip WebFontKitPerformanceTests
+          swiftpm_no_warnings test with_timeout 900 swift test --parallel --skip WebFontKitPerformanceTests \
+            -Xswiftc -warnings-as-errors ${{ matrix.flags }}
 
       - name: Upload logs
         if: failure()
