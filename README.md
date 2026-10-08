@@ -1,6 +1,6 @@
 # WebFontKit
 
-[![CI](https://github.com/itznotabug/webfontkit/actions/workflows/ci.yml/badge.svg)](https://github.com/itznotabug/webfontkit/actions/workflows/ci.yml)
+[![CI](https://github.com/ItzNotABug/WebFontKit/actions/workflows/ci.yml/badge.svg)](https://github.com/ItzNotABug/WebFontKit/actions/workflows/ci.yml)
 [![Swift 6.2](https://img.shields.io/badge/Swift-6.2-F05138?logo=swift&logoColor=white)](https://www.swift.org)
 [![Platforms](https://img.shields.io/badge/platforms-iOS%2017%2B%20%7C%20macOS%2014%2B-0A84FF?logo=apple&logoColor=white)](#installation)
 [![Swift Package Manager](https://img.shields.io/badge/SwiftPM-compatible-34C759)](#installation)
@@ -23,7 +23,7 @@ Text("Hello").font(web: "Lobster", size: 24)
 ## Installation
 
 ```swift
-.package(url: "https://github.com/itznotabug/webfontkit.git", branch: "main")
+.package(url: "https://github.com/ItzNotABug/WebFontKit.git", branch: "main")
 ```
 
 In Xcode: **File › Add Package Dependencies…**, paste the URL, and add the `WebFontKit` product.
