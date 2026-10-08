@@ -1,0 +1,2 @@
+# Fixtures are stored byte for byte: no line-ending conversion.
+Tests/Fixtures/** -text

@@ -1,0 +1,2 @@
+// For device builds, put DEVELOPMENT_TEAM = <your team> in Signing.local.xcconfig (gitignored).
+#include? "Signing.local.xcconfig"
