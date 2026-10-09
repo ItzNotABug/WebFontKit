@@ -49,7 +49,7 @@ The v32 path with the version segment changed; CSS2 serves only the current vers
 
 CoreText check, 2026-10-07: `CTFontManagerCreateFontDescriptorsFromURL` returned no descriptor for each of the four files on macOS 26.4, on the iOS 26.5 simulator (23F77) and on the iOS 18.0 simulator (22A3351). In the same runs the uncut `Woff/Lobster-Regular-latin.woff2` returned one descriptor.
 
-`Truncated.ttf` was first cut at half the file (196,104 bytes). It was cut to 4,096 bytes on 2026-10-09 and checked again on macOS 26.4 only: still no descriptor, and registration still fails with 103, as the half-length cut did.
+`Truncated.ttf` was first cut at half the file (196,104 bytes). It was cut to 4,096 bytes on 2026-10-09 and checked again: still no descriptor on macOS 26.4, on the iOS 26.5 simulator (23F77) and on the iOS 18.0 simulator (22A3351), and on macOS registration still fails with 103, as the half-length cut did.
 
 ## css2/
 
