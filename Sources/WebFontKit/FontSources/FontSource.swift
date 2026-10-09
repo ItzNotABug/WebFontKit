@@ -69,7 +69,7 @@ extension RemoteFontSource {
     /// let bytes = try await MyServer(token: token).fetch(FontRequest(family: "Lobster"))
     /// ```
     public func fetch(_ font: FontRequest) async throws -> Data {
-        try await fetch(request: font, session: LibrarySession.shared)
+        try await fetch(request: font, session: .shared)
     }
 
     @concurrent

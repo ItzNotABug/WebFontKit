@@ -20,4 +20,4 @@ for font in WebFonts.shared.downloaded where font.family == "Poppins" {
 
 ## Families iOS also ships
 
-Some Google families are also iOS system fonts. Loading one reports `.loaded`, but lookup by family name (`.custom(family)`, `UIFont(name: family)`) returns Apple's copy, so draw the downloaded face by its `DownloadedFont.postScriptName`. On macOS the downloaded copy registers and wins.
+Some Google families are also iOS system fonts, and loading one reports `.loaded` on every platform; on macOS the downloaded copy registers and wins. On iOS the system font usually has the same PostScript name, so only a marker is kept, with no ``DownloadedFont``, and Apple's face draws. When the names differ, the downloaded face registers and draws by its ``DownloadedFont/postScriptName``, while the family name still reaches Apple's copy.
