@@ -44,7 +44,7 @@ jobs:
       - uses: actions/checkout@v7
 
       - name: No unsafeFlags in Package.swift
-        run: "! sed 's#//.*##' Package.swift | grep -n unsafeFlags"
+        run: "! swift package dump-package | grep -q unsafeFlags"
 
       # One SwiftPM invocation builds and tests; any warning fails it.
       - name: Build and test, zero warnings

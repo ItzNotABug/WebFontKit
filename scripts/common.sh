@@ -17,18 +17,14 @@ with_timeout() {
         my $seconds = shift;
         my $pid = fork // die "fork: $!";
         if ($pid == 0) { setpgrp(0, 0); exec { $ARGV[0] } @ARGV or die "exec: $!" }
-        # Ctrl-C reaches only this process, so stop the child group (KILL after 3s if it
-        # ignores TERM), then die of the same signal so the calling script stops too.
-        $SIG{INT} = $SIG{TERM} = sub {
-            my $signal = shift;
-            kill "TERM", -$pid;
-            for (1 .. 30) { last if waitpid($pid, WNOHANG) != 0; select(undef, undef, undef, 0.1) }
-            kill "KILL", -$pid;
-            waitpid($pid, 0);
-            $SIG{$signal} = "DEFAULT";
-            kill $signal, $$;
-        };
-        $SIG{ALRM} = sub { print STDERR "timed out after ${seconds}s\n"; kill "TERM", -$pid; sleep 5; kill "KILL", -$pid; exit 124 };
+        # TERM the child group, KILL it if it is still there after $grace seconds.
+        sub stop { my $grace = shift; kill "TERM", -$pid;
+            for (1 .. 10 * $grace) { last if waitpid($pid, WNOHANG) != 0; select(undef, undef, undef, 0.1) }
+            kill "KILL", -$pid; waitpid($pid, 0) }
+        # Ctrl-C reaches only this process: stop the group, then die of the same signal
+        # so the calling script stops too.
+        $SIG{INT} = $SIG{TERM} = sub { my $signal = shift; stop(3); $SIG{$signal} = "DEFAULT"; kill $signal, $$ };
+        $SIG{ALRM} = sub { print STDERR "timed out after ${seconds}s\n"; stop(5); exit 124 };
         alarm $seconds;
         waitpid($pid, 0);
         exit($? & 127 ? 128 + ($? & 127) : $? >> 8);
