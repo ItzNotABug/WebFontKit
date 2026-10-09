@@ -57,14 +57,15 @@ final class PerformanceTests: XCTestCase {
         let options = XCTMeasureOptions()
         options.invocationOptions = [.manuallyStart, .manuallyStop]
         measure(metrics: [XCTClockMetric()], options: options) {
+            let directory = TempDirectory()
+            let stored = Result { try Self.storePerfFaces(in: directory) }
+            let registry = Registry(registrar: CoreTextRegistrar(), files: DiskFileOperations(), logSink: RecordingLogSink())
+            let store = Store(directory: directory.store, files: DiskFileOperations())
+            // Every iteration starts and stops, whatever throws, so XCTest reports only the real failure.
+            startMeasuring()
+            let warmed = Result { try stored.get(); return try run { await registry.warmUp(store: store, cacheKey: { "\($0.family)|400|n" }) } }
+            stopMeasuring()
             do {
-                let directory = TempDirectory()
-                try Self.storePerfFaces(in: directory)
-                let registry = Registry(registrar: CoreTextRegistrar(), files: DiskFileOperations(), logSink: RecordingLogSink())
-                let store = Store(directory: directory.store, files: DiskFileOperations())
-                startMeasuring()
-                let warmed = Result { try run { await registry.warmUp(store: store, cacheKey: { "\($0.family)|400|n" }) } }
-                stopMeasuring()
                 XCTAssertEqual(try warmed.get(), 20)
                 _ = try run { try await registry.remove(family: nil, directories: [store.directory]) }
             } catch {

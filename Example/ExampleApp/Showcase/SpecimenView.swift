@@ -61,8 +61,16 @@ private struct SpecimenContent: View {
                     }
                 }
                 Card(title: "UIKit") {
-                    UIKitLabel(postScriptName: phase == .loaded ? regularFace : nil)
-                        .frame(height: uikitHeight)
+                    Group {
+                        // `.redacted` doesn't reach a UIKit view, so loading shows a SwiftUI placeholder.
+                        if phase == .loading {
+                            Text("Hello from UILabel").font(.title2).frame(maxWidth: .infinity, alignment: .leading)
+                                .redacted(reason: .placeholder).shimmer(true)
+                        } else {
+                            UIKitLabel(postScriptName: phase == .loaded ? regularFace : nil)
+                        }
+                    }
+                    .frame(height: uikitHeight)
                     Text("Once registered, Apple's own APIs draw it too: this is a UILabel using the face's exact PostScript name.")
                         .font(.caption).foregroundStyle(.secondary)
                 }

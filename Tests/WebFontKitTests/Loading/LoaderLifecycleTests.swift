@@ -52,10 +52,13 @@ struct LoaderLifecycleTests {
         harness.server.serveGoogle()
         let fonts = harness.makeFonts()
         try await harness.warmUp(fonts)
-        // CSS2 has answered by the time the call parks; any download started would have run by then.
+        let fetches = Locked(0)
+        fonts.hooks.onFetch = { _ in fetches.withLock { $0 += 1 } }
+        // CSS2 has answered by the time the call parks.
         fonts.hooks.beforePark = { await fonts.quiesce(family: "Lobster") }
 
         await #expect(throws: WebFontError.notFound) { try await fonts.load("Lobster", styles: [.regular, .bold]) }
+        #expect(fetches.withLock { $0 } == 0)
         #expect(harness.fileRequests == 0)
         #expect(harness.leftovers.isEmpty)
         #expect(Self.settled(fonts))

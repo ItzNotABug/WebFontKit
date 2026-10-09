@@ -9,4 +9,6 @@ WebFonts.shared.configure(.init(directory: appGroupURL))
 try await WebFonts.shared.load("Lobster", styles: [.regular])
 ```
 
-A `load` of a registered face returns at once with no network call. Waiting for `.warmedUp` is not enough: a face that shares a system font's name comes back only through `load`. Ask only for styles the family has.
+A `load` of a registered face returns at once with no network call. Waiting for `.warmedUp` is not enough: a face that shares a system font's name comes back only through `load`. Ask only for styles the family has: the modifier's stand-in regular face lives in memory, so `load` throws `.notFound` for a missing style.
+
+A `remove` in the app doesn't reach a running extension, which keeps drawing the faces it opened until it relaunches.

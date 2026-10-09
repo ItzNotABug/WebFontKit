@@ -50,6 +50,9 @@ struct DiskFileOperations: FileOperations {
 
     func fileEntry(at url: URL) throws -> FileEntry? {
         dispatchPrecondition(condition: .notOnQueue(.main))
+        // A listing's URLs carry cached values, which can outlive a file another process deleted.
+        var url = url
+        url.removeAllCachedResourceValues()
         let values = try url.resourceValues(forKeys: [.isRegularFileKey, .contentModificationDateKey, .fileSizeKey])
         guard values.isRegularFile == true else { return nil }
         return FileEntry(url: url, modificationDate: values.contentModificationDate ?? .distantPast, byteCount: values.fileSize ?? 0)

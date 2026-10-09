@@ -306,6 +306,9 @@ extension WebFonts {
     }
 
     private func startFetch(_ key: StyleKey, url: URL?, job: UUID, snapshot: Snapshot) {
+        #if DEBUG
+        hooks.onFetch?(key.family)
+        #endif
         let task = Task { [self] in
             let fetcher = FaceFetcher(session: snapshot.session, directory: snapshot.directory, files: files,
                                       registrar: registry.registrar, logSink: logSink)

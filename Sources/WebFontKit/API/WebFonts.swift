@@ -270,6 +270,7 @@ final class TestHooks: Sendable {
         var beforePark: (@Sendable () async -> Void)?
         var beforeAlias: (@Sendable () async -> Void)?
         var onWarmUpWait: (@Sendable () -> Void)?
+        var onFetch: (@Sendable (String) -> Void)?
     }
 
     private let closures = Locked(Closures())
@@ -290,6 +291,12 @@ final class TestHooks: Sendable {
     var beforeAlias: (@Sendable () async -> Void)? {
         get { closures.withLock { $0.beforeAlias } }
         set { closures.withLock { $0.beforeAlias = newValue } }
+    }
+
+    /// Called with the family each time a face's download starts.
+    var onFetch: (@Sendable (String) -> Void)? {
+        get { closures.withLock { $0.onFetch } }
+        set { closures.withLock { $0.onFetch = newValue } }
     }
 
     /// Called each time a caller starts waiting on an unfinished warm-up.

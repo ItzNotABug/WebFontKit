@@ -58,6 +58,20 @@ struct DiskStoreTests {
         #expect(!FileManager.default.fileExists(atPath: old.path))
     }
 
+    @Test("a file deleted after a listing reads as gone, not from the listing's cached values")
+    func fileEntryIsFresh() throws {
+        let directory = TempDirectory()
+        let file = directory.url.appending(component: "Lobster@400n@abc.wfkfont")
+        try Data("x".utf8).write(to: file)
+        let files = DiskFileOperations()
+        let listed = try #require(files.contentsOfDirectory(at: directory.url).first?.url)
+        #expect(try files.fileEntry(at: listed) != nil)
+
+        try FileManager.default.removeItem(at: file)
+        // Callers read it with `try?`: a throw and a nil both mean gone.
+        #expect((try? files.fileEntry(at: listed)) == nil)
+    }
+
     @Test("a missing store directory lists nothing")
     func missingDirectory() throws {
         let directory = TempDirectory()

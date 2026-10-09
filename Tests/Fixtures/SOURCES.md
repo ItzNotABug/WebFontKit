@@ -1,6 +1,6 @@
 # Fixture sources
 
-Downloaded once with curl on 2026-10-07 and kept byte for byte, except the three `Corrupt/` files made locally and the two `css2/` HTML pages trimmed to their title and body (noted below). Each font URL comes from a fresh CSS2 response of that day, requested with `User-Agent: WebFontKit/1.0.0` unless noted. Sizes are decoded bytes. Glyph counts and PostScript names were read with `CTFontManagerCreateFontDescriptorsFromURL` on macOS 26.4.
+Downloaded once with curl on 2026-10-07 and kept byte for byte, except the three `Corrupt/` files made locally. Each font URL comes from a fresh CSS2 response of that day, requested with `User-Agent: WebFontKit/1.0.0` unless noted. Sizes are decoded bytes. Glyph counts and PostScript names were read with `CTFontManagerCreateFontDescriptorsFromURL` on macOS 26.4.
 
 All fonts are under the SIL Open Font License 1.1. Each folder carries the licence text from the google/fonts repository (`https://raw.githubusercontent.com/google/fonts/main/ofl/<family>/OFL.txt`), because the served font files carry no licence text.
 
@@ -43,7 +43,7 @@ The v32 path with the version segment changed; CSS2 serves only the current vers
 | File | How it was made | Bytes | SHA-256 |
 |---|---|---|---|
 | `Empty.ttf` | Zero bytes, made locally. | 0 | `e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855` |
-| `Truncated.ttf` | The first 4,096 bytes of `Fonts/Lobster-Regular.ttf`, made locally with `head -c`. | 4,096 | `c05719eb71b4fb8551d94f2241a3e3831ff816e433f598396777e78fc5efcb7d` |
+| `Truncated.ttf` | The first 4,096 bytes of `Fonts/Lobster-Regular.ttf`, made locally with `head -c`: the whole table directory (17 tables, 284 bytes) survives, and 10 tables, `glyf` among them, are cut mid-body, as in an interrupted download. | 4,096 | `c05719eb71b4fb8551d94f2241a3e3831ff816e433f598396777e78fc5efcb7d` |
 | `NotFound.ttf` | Downloaded: the HTML page `https://fonts.googleapis.com/css2?family=lobster` returns (status 400, `text/html; charset=utf-8`, "400: Font family not found"), saved as `.ttf`. | 6,478 | `283dee1142dc6f5b704942c3842e9ba43e558a6979f335744601061c0795f70d` |
 | `Truncated.woff2` | The first 8,534 bytes (half) of `Woff/Lobster-Regular-latin.woff2`, made locally with `head -c`. | 8,534 | `d62aa017e5617b597476ab0ab2ad5dab8ba246fe53dd4e31d581d2aab159e83f` |
 
@@ -67,7 +67,6 @@ Responses captured from the live endpoint with curl; each file name carries its 
 | `nabla-2026-10-07.css` | `Nabla` | 200 |
 
 - The partial answer for `Lobster:wght@400;700` was byte for byte the `Lobster` answer (the regular face alone), so tests use `lobster-2026-10-07.css` for it.
-- The two HTML pages are trimmed to their `<title>` and `<body>`; the inline script and styles Google sends are dropped, since only the title is read.
 
 ## Perf/
 
