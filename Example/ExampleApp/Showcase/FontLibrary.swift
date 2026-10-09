@@ -23,7 +23,12 @@ final class FontLibrary {
     /// behind; `fonts` is read too, so the view updates again on the next event.
     func face(_ family: String, style: FontStyle) -> DownloadedFont? {
         _ = fonts
-        return WebFonts.shared.downloaded.first {
+        return Self.storedFace(family, style: style)
+    }
+
+    /// Not observation-tracked: for a starting value read while a parent's body runs.
+    static func storedFace(_ family: String, style: FontStyle) -> DownloadedFont? {
+        WebFonts.shared.downloaded.first {
             $0.family.caseInsensitiveCompare(family) == .orderedSame && $0.style == style
         }
     }

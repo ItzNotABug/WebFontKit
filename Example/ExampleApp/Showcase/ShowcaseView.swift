@@ -18,7 +18,7 @@ struct ShowcaseView: View {
 
     var body: some View {
         TabView(selection: $screen) {
-            NavigationStack { TryView(library: library) }
+            NavigationStack { TryView() }
                 .tabItem { Label("Try", systemImage: "textformat.size") }.tag(Screen.tryIt)
             GalleryView()
                 .tabItem { Label("Gallery", systemImage: "square.grid.2x2") }.tag(Screen.gallery)

@@ -40,6 +40,8 @@ final class EventLog {
     private static let patience: Duration = .seconds(60)
     /// Loads without a close yet: (family, styles) → when it started and its row.
     private var open: [String: (started: ContinuousClock.Instant, id: UUID)] = [:]
+    /// One task for every open load, rather than a sleeping task per load.
+    private var sweeper: Task<Void, Never>?
 
     func listen() async {
         for await event in WebFonts.shared.events {
@@ -77,10 +79,7 @@ final class EventLog {
             let entry = Entry(event: event)
             open[key] = (now, entry.id)
             insert(entry)
-            Task { [weak self] in
-                try? await Task.sleep(for: Self.patience)
-                self?.markUnneeded(entry.id)
-            }
+            startSweeping()
         case .loaded(let family, let styles), .failed(let family, let styles, _):
             if let (started, id) = open.removeValue(forKey: Self.key(family, styles)),
                let index = entries.firstIndex(where: { $0.id == id }) {
@@ -93,6 +92,7 @@ final class EventLog {
             } else {
                 insert(Entry(event: event))
             }
+            stopSweepingIfIdle()
         case .removed(let family):
             // An overtaken load never closes; settle its row.
             for (key, value) in open where key.hasPrefix(family.lowercased() + "|") {
@@ -105,16 +105,43 @@ final class EventLog {
                 }
             }
             insert(Entry(event: event))
+            stopSweepingIfIdle()
         case .warmedUp:
             insert(Entry(event: event))
         }
     }
 
-    /// Stays in `open`: a close that comes after all still settles the row.
-    private func markUnneeded(_ id: UUID) {
-        if let index = entries.firstIndex(where: { $0.id == id }), entries[index].isOpen {
-            entries[index].stop = .unneeded
+    private func startSweeping() {
+        guard sweeper == nil else { return }
+        sweeper = Task { [weak self] in
+            while true {
+                do { try await Task.sleep(for: .seconds(15)) } catch { return }
+                guard !Task.isCancelled, let self else { return }
+                self.sweep()
+                if !self.hasWaitingLoad { self.sweeper = nil; return }
+            }
         }
+    }
+
+    private func stopSweepingIfIdle() {
+        guard !hasWaitingLoad else { return }
+        sweeper?.cancel()
+        sweeper = nil
+    }
+
+    /// Marked rows stay in `open`: a close that comes after all still settles them.
+    private func sweep() {
+        let now = ContinuousClock.now
+        for (started, id) in open.values where now - started >= Self.patience {
+            if let index = entries.firstIndex(where: { $0.id == id }), entries[index].isOpen {
+                entries[index].stop = .unneeded
+            }
+        }
+    }
+
+    /// An open load whose row isn't marked yet.
+    private var hasWaitingLoad: Bool {
+        open.values.contains { load in entries.contains { $0.id == load.id && $0.isOpen } }
     }
 
     private func discard(_ id: UUID) {

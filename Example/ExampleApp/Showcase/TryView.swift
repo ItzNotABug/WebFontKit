@@ -84,8 +84,9 @@ struct TryView: View {
     @State private var showsAbout = false
     @FocusState private var focus: Field?
 
-    init(library: FontLibrary) {
-        _model = State(initialValue: TryModel { library.isStored($0, style: .regular) })
+    // Untracked, so ShowcaseView's body doesn't re-render on every font event.
+    init() {
+        _model = State(initialValue: TryModel { FontLibrary.storedFace($0, style: .regular) != nil })
     }
 
     var body: some View {
