@@ -73,10 +73,9 @@ extension Registry {
     private func openAndInsert(_ face: StoredFace, epochs: Epochs?) async -> RegistrationResult {
         let opened = await registrar.openRegisteredFace(postScriptName: face.postScriptName)
         if opened.postScriptName == face.postScriptName, let url = opened.fileURL, sameFile(face.url)(url),
-           opened.glyphCount == face.glyphCount, files.fileExists(at: face.url) {
+           opened.glyphCount == face.glyphCount, let row = downloadedRow(for: face) {
             checkSilentCollision(face)
             let entry = face.entry(registeredHere: true)
-            let row = downloadedRow(for: face, postScriptName: face.postScriptName)
             if await insert(entry, for: face.key, row: row, epochs: epochs) {
                 log("registry", .info, "Registered \(face.key) as \(face.postScriptName)")
                 return .added(entry)
@@ -129,11 +128,9 @@ extension Registry {
         return .added(entry)
     }
 
-    /// The row is read here, only when inserting: it costs a stat.
     private func insertUnregistered(_ face: StoredFace, epochs: Epochs?) async -> RegistrationResult {
         let entry = face.entry(registeredHere: false)
-        let row = downloadedRow(for: face, postScriptName: face.postScriptName)
-        return await insert(entry, for: face.key, row: row, epochs: epochs) ? .added(entry) : .overtaken
+        return await insert(entry, for: face.key, row: downloadedRow(for: face), epochs: epochs) ? .added(entry) : .overtaken
     }
 
     private func failure(_ face: StoredFace, epochs: Epochs?, registered: Bool) async -> RegistrationResult {

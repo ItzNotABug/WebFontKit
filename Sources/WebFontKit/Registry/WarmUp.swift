@@ -44,7 +44,7 @@ extension Registry {
                 if opened.postScriptName == face.postScriptName, let url = opened.fileURL, sameFile(face.url)(url),
                    opened.glyphCount == face.glyphCount, files.fileExists(at: face.url) {
                     warmed.append(WarmFace(key: face.key, entry: face.entry(registeredHere: true),
-                                           row: downloadedRow(for: face, postScriptName: face.postScriptName), counted: true))
+                                           row: downloadedRow(for: face), counted: true))
                     warmed += shared.map { unregisteredFace($0) }
                 } else if opened.postScriptName == face.postScriptName, let url = opened.fileURL, isAnotherInstancesFile(url, of: face) {
                     failedOpens.append(face.url)
@@ -141,7 +141,7 @@ extension Registry {
 
     private func unregisteredFace(_ face: StoredFace) -> WarmFace {
         WarmFace(key: face.key, entry: face.entry(registeredHere: false),
-                 row: downloadedRow(for: face, postScriptName: face.postScriptName), counted: false)
+                 row: downloadedRow(for: face), counted: false)
     }
 
     /// A system font answering the name turns each face into a marker; anything else leaves an unregistered entry.

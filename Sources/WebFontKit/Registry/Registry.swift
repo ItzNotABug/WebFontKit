@@ -207,10 +207,11 @@ final class Registry: Sendable {
 
     // MARK: Inserting
 
-    func downloadedRow(for face: StoredFace, postScriptName: String) -> DownloadedFont? {
+    /// Nil when the file is gone.
+    func downloadedRow(for face: StoredFace) -> DownloadedFont? {
         guard let entry = face.file ?? (try? files.fileEntry(at: face.url)) else { return nil }
         return DownloadedFont(
-            family: face.key.family, style: face.key.style, postScriptName: postScriptName,
+            family: face.key.family, style: face.key.style, postScriptName: face.postScriptName,
             byteCount: entry.byteCount, downloadedAt: entry.modificationDate
         )
     }
