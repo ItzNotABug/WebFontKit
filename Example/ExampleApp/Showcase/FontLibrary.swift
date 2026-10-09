@@ -34,7 +34,8 @@ final class FontLibrary {
 
     private static func storedFace(_ family: String, style: FontStyle) -> DownloadedFont? {
         WebFonts.shared.downloaded.first {
-            $0.family.caseInsensitiveCompare(family) == .orderedSame && $0.style == style
+            // Exact, as the library matches family names.
+            $0.family == family && $0.style == style
         }
     }
 

@@ -172,4 +172,10 @@ struct TestSupportTests {
         try await server.waitForCancel(of: cancelled)
         server.release(cancelled)
     }
+
+    @Test("the production log sink accepts a line")
+    func loggerSink() {
+        let sink: any LogSink = .logger
+        sink.log(category: "test", level: .debug, message: "smoke", privateValues: ["value"])
+    }
 }

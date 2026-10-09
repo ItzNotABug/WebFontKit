@@ -182,7 +182,6 @@ private struct PreviewCard: View {
 private struct FamilyCard: View {
     @Bindable var model: TryModel
     var focus: FocusState<TryView.Field?>.Binding
-    @Environment(FontLibrary.self) private var library
 
     var body: some View {
         Card(title: "Family") {

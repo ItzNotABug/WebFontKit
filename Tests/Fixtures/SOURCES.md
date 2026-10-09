@@ -53,7 +53,7 @@ CoreText check, 2026-10-07: `CTFontManagerCreateFontDescriptorsFromURL` returned
 
 ## css2/
 
-Responses captured from the live endpoint by `scripts/local/probe-endpoints.sh --capture`; each file name carries its capture date. Each came from `https://fonts.googleapis.com/css2?family=<query>`:
+Responses captured from the live endpoint with curl; each file name carries its capture date. Each came from `https://fonts.googleapis.com/css2?family=<query>`:
 
 | File | Query | Status |
 |---|---|---|

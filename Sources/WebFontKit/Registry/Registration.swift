@@ -73,10 +73,10 @@ extension Registry {
     private func openAndInsert(_ face: StoredFace, epochs: Epochs?) async -> RegistrationResult {
         let opened = await registrar.openRegisteredFace(postScriptName: face.postScriptName)
         if opened.postScriptName == face.postScriptName, let url = opened.fileURL, sameFile(face.url)(url),
-           opened.glyphCount == face.glyphCount, let row = downloadedRow(for: face) {
+           opened.glyphCount == face.glyphCount, files.fileExists(at: face.url) {
             checkSilentCollision(face)
             let entry = face.entry(registeredHere: true)
-            if await insert(entry, for: face.key, row: row, epochs: epochs) {
+            if await insert(entry, for: face.key, row: downloadedRow(for: face), epochs: epochs) {
                 log("registry", .info, "Registered \(face.key) as \(face.postScriptName)")
                 return .added(entry)
             }
