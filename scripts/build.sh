@@ -9,7 +9,7 @@ cd "$ROOT"
 command -v xcodegen >/dev/null || fail "needs XcodeGen for the Example app (brew install xcodegen)"
 
 log "Package.swift has no unsafeFlags"
-! grep -nE '^[^/]*unsafeFlags\(' Package.swift || fail "Package.swift contains unsafeFlags, which SwiftPM rejects in dependencies"
+! sed 's#//.*##' Package.swift | grep -n 'unsafeFlags' || fail "Package.swift contains unsafeFlags, which SwiftPM rejects in dependencies"
 
 log "macOS: package and tests"
 swiftpm_no_warnings build-macos swift build --build-tests -Xswiftc -warnings-as-errors

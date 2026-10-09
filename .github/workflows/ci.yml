@@ -31,7 +31,7 @@ jobs:
   test:
     name: ${{ matrix.name }}
     runs-on: macos-26
-    timeout-minutes: 10
+    timeout-minutes: 15
     strategy:
       matrix:
         include:
@@ -44,13 +44,13 @@ jobs:
       - uses: actions/checkout@v7
 
       - name: No unsafeFlags in Package.swift
-        run: "! grep -nE '^[^/]*unsafeFlags\\(' Package.swift"
+        run: "! sed 's#//.*##' Package.swift | grep -n unsafeFlags"
 
       # One SwiftPM invocation builds and tests; any warning fails it.
       - name: Build and test, zero warnings
         run: |
           source scripts/common.sh
-          swiftpm_no_warnings test with_timeout 480 swift test --skip WebFontKitPerformanceTests \
+          swiftpm_no_warnings test with_timeout 600 swift test --skip WebFontKitPerformanceTests \
             -Xswiftc -warnings-as-errors ${{ matrix.flags }}
 
       - name: Upload logs

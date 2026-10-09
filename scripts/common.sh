@@ -13,12 +13,21 @@ fail() { printf '\nFAIL: %s\n' "$*" >&2; exit 1; }
 with_timeout() {
     local seconds="$1"; shift
     perl -e '
+        use POSIX ":sys_wait_h";
         my $seconds = shift;
         my $pid = fork // die "fork: $!";
         if ($pid == 0) { setpgrp(0, 0); exec { $ARGV[0] } @ARGV or die "exec: $!" }
-        # Ctrl-C reaches only this process, so stop the child group, then die of the same
-        # signal so the calling script stops too.
-        $SIG{INT} = $SIG{TERM} = sub { my $signal = shift; kill "TERM", -$pid; waitpid($pid, 0); $SIG{$signal} = "DEFAULT"; kill $signal, $$ };
+        # Ctrl-C reaches only this process, so stop the child group (KILL after 3s if it
+        # ignores TERM), then die of the same signal so the calling script stops too.
+        $SIG{INT} = $SIG{TERM} = sub {
+            my $signal = shift;
+            kill "TERM", -$pid;
+            for (1 .. 30) { last if waitpid($pid, WNOHANG) != 0; select(undef, undef, undef, 0.1) }
+            kill "KILL", -$pid;
+            waitpid($pid, 0);
+            $SIG{$signal} = "DEFAULT";
+            kill $signal, $$;
+        };
         $SIG{ALRM} = sub { print STDERR "timed out after ${seconds}s\n"; kill "TERM", -$pid; sleep 5; kill "KILL", -$pid; exit 124 };
         alarm $seconds;
         waitpid($pid, 0);
@@ -90,7 +99,7 @@ xcodebuild_no_warnings() {
     fi
     local results="$WORK/$name.json" status errors warnings
     xcrun xcresulttool get build-results --path "$bundle" >"$results" || fail "$name: could not read build results"
-    status=$(plutil -extract status raw "$results")
+    status=$(plutil -extract status raw "$results") || fail "$name: no build status in the result bundle"
     errors=$(plutil -extract errorCount raw "$results" 2>/dev/null || echo 0)
     warnings=$(plutil -extract warningCount raw "$results" 2>/dev/null || echo 0)
     [ "$status" = "succeeded" ] && [ "$errors" = "0" ] || fail "$name: build $status with $errors error(s)"
