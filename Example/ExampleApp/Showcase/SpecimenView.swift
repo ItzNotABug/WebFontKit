@@ -14,7 +14,7 @@ struct SpecimenView: View {
 
     var body: some View {
         // Keyed so Retry, or removing the family elsewhere, starts the specimen over.
-        SpecimenContent(family: family, stored: library.isStored(family, style: .regular)) { attempt += 1 }
+        SpecimenContent(family: family, stored: FontLibrary.isStored(family, style: .regular)) { attempt += 1 }
             .id(ContentID(attempt: attempt, generation: library.generation(of: family)))
             .screen(family)
             .navigationBarTitleDisplayMode(.inline)
@@ -68,7 +68,7 @@ private struct SpecimenContent: View {
                 }
                 Card(title: "Styles") {
                     ForEach(StyleRow.styles, id: \.self) { style in
-                        StyleRow(family: family, style: style, stored: library.isStored(family, style: style))
+                        StyleRow(family: family, style: style, stored: FontLibrary.isStored(family, style: style))
                     }
                     Text("A style the family lacks draws its regular face.")
                         .font(.caption).foregroundStyle(.secondary)

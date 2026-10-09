@@ -86,7 +86,7 @@ struct TryView: View {
 
     // Untracked, so ShowcaseView's body doesn't re-render on every font event.
     init() {
-        _model = State(initialValue: TryModel { FontLibrary.storedFace($0, style: .regular) != nil })
+        _model = State(initialValue: TryModel { FontLibrary.isStored($0, style: .regular) })
     }
 
     var body: some View {
@@ -214,7 +214,7 @@ private struct FamilyCard: View {
                     HStack(spacing: 10) {
                         ForEach(TryModel.suggestions, id: \.self) { name in
                             FontChip(family: name, selected: name == model.family) {
-                                model.choose(name, stored: library.isStored(name, style: model.style))
+                                model.choose(name, stored: FontLibrary.isStored(name, style: model.style))
                             }
                         }
                     }
@@ -225,7 +225,7 @@ private struct FamilyCard: View {
     }
 
     private func submit() {
-        model.submit(stored: library.isStored(model.pendingFamily, style: model.style))
+        model.submit(stored: FontLibrary.isStored(model.pendingFamily, style: model.style))
     }
 }
 

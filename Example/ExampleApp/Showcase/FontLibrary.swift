@@ -26,16 +26,16 @@ final class FontLibrary {
         return Self.storedFace(family, style: style)
     }
 
-    /// Not observation-tracked: for a starting value read while a parent's body runs.
-    static func storedFace(_ family: String, style: FontStyle) -> DownloadedFont? {
+    /// Whether the face is already registered, so a view can start out drawn rather than loading.
+    /// Not observation-tracked: a starting value, read while a parent's body runs.
+    static func isStored(_ family: String, style: FontStyle) -> Bool {
+        storedFace(family, style: style) != nil
+    }
+
+    private static func storedFace(_ family: String, style: FontStyle) -> DownloadedFont? {
         WebFonts.shared.downloaded.first {
             $0.family.caseInsensitiveCompare(family) == .orderedSame && $0.style == style
         }
-    }
-
-    /// Whether the face is already registered, so a view can start out drawn rather than loading.
-    func isStored(_ family: String, style: FontStyle) -> Bool {
-        face(family, style: style) != nil
     }
 
     /// One subscription for the app's lifetime. `downloaded` is served from memory, so

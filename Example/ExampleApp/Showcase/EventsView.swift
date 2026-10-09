@@ -39,7 +39,12 @@ final class EventLog {
     /// How long an open load waits for its close before its row says it hasn't finished.
     private static let patience: Duration = .seconds(60)
     /// Loads without a close yet: (family, styles) → when it started and its row.
-    private var open: [String: (started: ContinuousClock.Instant, id: UUID)] = [:]
+    private struct Load {
+        let started: ContinuousClock.Instant
+        let id: UUID
+        var givenUp = false
+    }
+    private var open: [String: Load] = [:]
     /// One task for every open load, rather than a sleeping task per load.
     private var sweeper: Task<Void, Never>?
 
@@ -61,7 +66,8 @@ final class EventLog {
         }
     }
 
-    /// Keeps loads still in progress, so their rows can still close.
+    /// Keeps loads still in progress, so their rows can still close. A given-up load's row goes;
+    /// if it does finish later, that shows as a new row.
     func clear() {
         entries.removeAll { !$0.isOpen }
         let kept = Set(entries.map(\.id))
@@ -77,15 +83,15 @@ final class EventLog {
             // away), and this is it starting again: one row, not a spinner left behind.
             if let earlier = open[key] { discard(earlier.id) }
             let entry = Entry(event: event)
-            open[key] = (now, entry.id)
+            open[key] = Load(started: now, id: entry.id)
             insert(entry)
-            startSweeping()
+            if sweeper == nil { scheduleSweep() }
         case .loaded(let family, let styles), .failed(let family, let styles, _):
-            if let (started, id) = open.removeValue(forKey: Self.key(family, styles)),
-               let index = entries.firstIndex(where: { $0.id == id }) {
+            if let load = open.removeValue(forKey: Self.key(family, styles)),
+               let index = entries.firstIndex(where: { $0.id == load.id }) {
                 var entry = entries.remove(at: index)
                 entry.event = event
-                entry.duration = now - started
+                entry.duration = now - load.started
                 entry.stop = nil
                 entry.date = Date()
                 insert(entry)
@@ -111,37 +117,29 @@ final class EventLog {
         }
     }
 
-    private func startSweeping() {
-        guard sweeper == nil else { return }
+    /// One task, asleep until the oldest waiting load runs out of patience.
+    private func scheduleSweep() {
+        sweeper?.cancel()
+        sweeper = nil
+        guard let oldest = open.values.filter({ !$0.givenUp }).map(\.started).min() else { return }
         sweeper = Task { [weak self] in
-            while true {
-                do { try await Task.sleep(for: .seconds(15)) } catch { return }
-                guard !Task.isCancelled, let self else { return }
-                self.sweep()
-                if !self.hasWaitingLoad { self.sweeper = nil; return }
-            }
+            do { try await Task.sleep(until: oldest + Self.patience) } catch { return }
+            self?.sweep()
         }
     }
 
     private func stopSweepingIfIdle() {
-        guard !hasWaitingLoad else { return }
-        sweeper?.cancel()
-        sweeper = nil
+        if !open.values.contains(where: { !$0.givenUp }) { scheduleSweep() }
     }
 
-    /// Marked rows stay in `open`: a close that comes after all still settles them.
+    /// Given-up loads stay in `open`: a close that comes after all still settles their rows.
     private func sweep() {
         let now = ContinuousClock.now
-        for (started, id) in open.values where now - started >= Self.patience {
-            if let index = entries.firstIndex(where: { $0.id == id }), entries[index].isOpen {
-                entries[index].stop = .unneeded
-            }
+        for (key, load) in open where !load.givenUp && now - load.started >= Self.patience {
+            open[key]?.givenUp = true
+            if let index = entries.firstIndex(where: { $0.id == load.id }) { entries[index].stop = .unneeded }
         }
-    }
-
-    /// An open load whose row isn't marked yet.
-    private var hasWaitingLoad: Bool {
-        open.values.contains { load in entries.contains { $0.id == load.id && $0.isOpen } }
+        scheduleSweep()
     }
 
     private func discard(_ id: UUID) {

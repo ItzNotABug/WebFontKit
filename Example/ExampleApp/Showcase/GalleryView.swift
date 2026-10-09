@@ -61,7 +61,7 @@ struct GalleryView: View {
                 LazyVGrid(columns: [GridItem(.adaptive(minimum: typeSize.isAccessibilitySize ? 300 : 160), spacing: 14)], spacing: 14) {
                     ForEach(Self.families, id: \.self) { family in
                         NavigationLink(value: family) {
-                            GalleryCard(family: family, stored: library.isStored(family, style: .regular))
+                            GalleryCard(family: family, stored: FontLibrary.isStored(family, style: .regular))
                                 .id(library.generation(of: family))
                         }
                         .buttonStyle(PressableCardStyle())
