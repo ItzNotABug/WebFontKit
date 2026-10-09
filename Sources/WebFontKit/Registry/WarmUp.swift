@@ -42,9 +42,9 @@ extension Registry {
                 let opened = await registrar.openRegisteredFace(postScriptName: face.postScriptName)
                 // No silent-collision check here: it only logs, and the face's first commit already did.
                 if opened.postScriptName == face.postScriptName, let url = opened.fileURL, sameFile(face.url)(url),
-                   opened.glyphCount == face.glyphCount, files.fileExists(at: face.url) {
+                   opened.glyphCount == face.glyphCount, let file = try? files.fileEntry(at: face.url) {
                     warmed.append(WarmFace(key: face.key, entry: face.entry(registeredHere: true),
-                                           row: downloadedRow(for: face), counted: true))
+                                           row: downloadedRow(for: face, file: file), counted: true))
                     warmed += shared.map { unregisteredFace($0) }
                 } else if opened.postScriptName == face.postScriptName, let url = opened.fileURL, isAnotherInstancesFile(url, of: face) {
                     failedOpens.append(face.url)

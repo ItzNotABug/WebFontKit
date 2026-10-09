@@ -16,7 +16,7 @@ final class FontLibrary {
     /// Changes when `family` is removed. A view keyed by it gets a new identity, so its
     /// `.font(web:)` loads again instead of reporting "Ready" over the system font.
     func generation(of family: String) -> Int {
-        removals[family.lowercased(), default: 0]
+        removals[family, default: 0]
     }
 
     /// Read live, so a view asking as its phase turns `.loaded` never sees the list one event
@@ -45,7 +45,7 @@ final class FontLibrary {
         refresh()
         for await event in WebFonts.shared.events {
             if case .removed(let family) = event {
-                removals[family.lowercased(), default: 0] += 1
+                removals[family, default: 0] += 1
             }
             refresh()
         }

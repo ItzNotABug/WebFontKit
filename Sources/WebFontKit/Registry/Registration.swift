@@ -73,10 +73,11 @@ extension Registry {
     private func openAndInsert(_ face: StoredFace, epochs: Epochs?) async -> RegistrationResult {
         let opened = await registrar.openRegisteredFace(postScriptName: face.postScriptName)
         if opened.postScriptName == face.postScriptName, let url = opened.fileURL, sameFile(face.url)(url),
-           opened.glyphCount == face.glyphCount, files.fileExists(at: face.url) {
+           // A fresh read: the file must still be there, and the row is built from it.
+           opened.glyphCount == face.glyphCount, let file = try? files.fileEntry(at: face.url) {
             checkSilentCollision(face)
             let entry = face.entry(registeredHere: true)
-            if await insert(entry, for: face.key, row: downloadedRow(for: face), epochs: epochs) {
+            if await insert(entry, for: face.key, row: downloadedRow(for: face, file: file), epochs: epochs) {
                 log("registry", .info, "Registered \(face.key) as \(face.postScriptName)")
                 return .added(entry)
             }
@@ -150,7 +151,7 @@ extension Registry {
         return !named.contains(where: sameFile(url))
     }
 
-    /// Silent mode (iOS): registered, but the family name still resolves to Apple's copy. Only logged.
+    /// iOS: registered, but the family name still resolves to Apple's copy under another PostScript name. Only logged.
     func checkSilentCollision(_ face: StoredFace) {
         #if os(iOS)
         let resolved = registrar.faceForFamily(face.familyName)

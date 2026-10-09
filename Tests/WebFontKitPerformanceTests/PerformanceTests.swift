@@ -63,9 +63,9 @@ final class PerformanceTests: XCTestCase {
                 let registry = Registry(registrar: CoreTextRegistrar(), files: DiskFileOperations(), logSink: RecordingLogSink())
                 let store = Store(directory: directory.store, files: DiskFileOperations())
                 startMeasuring()
-                let count = try run { await registry.warmUp(store: store, cacheKey: { "\($0.family)|400|n" }) }
+                let warmed = Result { try run { await registry.warmUp(store: store, cacheKey: { "\($0.family)|400|n" }) } }
                 stopMeasuring()
-                XCTAssertEqual(count, 20)
+                XCTAssertEqual(try warmed.get(), 20)
                 _ = try run { try await registry.remove(family: nil, directories: [store.directory]) }
             } catch {
                 XCTFail("\(error)")

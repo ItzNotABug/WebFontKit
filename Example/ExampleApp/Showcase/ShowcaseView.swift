@@ -15,10 +15,11 @@ struct ShowcaseView: View {
     @State private var library = FontLibrary()
     @State private var events = EventLog()
     @State private var screen = Screen.atLaunch
+    @State private var tryModel = TryModel { FontLibrary.isStored($0, style: .regular) }
 
     var body: some View {
         TabView(selection: $screen) {
-            NavigationStack { TryView() }
+            NavigationStack { TryView(model: tryModel) }
                 .tabItem { Label("Try", systemImage: "textformat.size") }.tag(Screen.tryIt)
             GalleryView()
                 .tabItem { Label("Gallery", systemImage: "square.grid.2x2") }.tag(Screen.gallery)

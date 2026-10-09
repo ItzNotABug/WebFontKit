@@ -80,14 +80,9 @@ final class TryModel {
 struct TryView: View {
     enum Field { case family, sample }
 
-    @State private var model: TryModel
+    let model: TryModel
     @State private var showsAbout = false
     @FocusState private var focus: Field?
-
-    // Untracked, so ShowcaseView's body doesn't re-render on every font event.
-    init() {
-        _model = State(initialValue: TryModel { FontLibrary.isStored($0, style: .regular) })
-    }
 
     var body: some View {
         ScrollView {

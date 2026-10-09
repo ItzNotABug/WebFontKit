@@ -101,7 +101,7 @@ final class EventLog {
             stopSweepingIfIdle()
         case .removed(let family):
             // An overtaken load never closes; settle its row.
-            for (key, value) in open where key.hasPrefix(family.lowercased() + "|") {
+            for (key, value) in open where key.hasPrefix(family + "|") {
                 open[key] = nil
                 if let index = entries.firstIndex(where: { $0.id == value.id }) {
                     var entry = entries.remove(at: index)
@@ -152,7 +152,7 @@ final class EventLog {
     }
 
     private static func key(_ family: String, _ styles: [FontStyle]) -> String {
-        family.lowercased() + "|" + styles.map { "\($0.weight)\($0.isItalic ? "i" : "")" }.joined(separator: ",")
+        family + "|" + styles.map { "\($0.weight)\($0.isItalic ? "i" : "")" }.joined(separator: ",")
     }
 }
 
