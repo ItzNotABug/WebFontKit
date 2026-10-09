@@ -30,6 +30,13 @@ extension IntegrationTests {
             return renderer.cgImage
         }
 
+        /// The web-font text, opening `settled` once its modifier's own load has finished. The
+        /// modifier loads from `.task`, which can run after the render; cleanup waits for it, or
+        /// a late load would register the font again after `removeAll`.
+        func webText(settled: AsyncLatch) -> some View {
+            Text("Hamburgefonstiv").font(web: "Lobster", size: 24) { if $0 != .loading { settled.open() } }
+        }
+
         func pixels(_ image: CGImage?) -> Data? {
             guard let image, let data = image.dataProvider?.data else { return nil }
             return data as Data
@@ -39,10 +46,12 @@ extension IntegrationTests {
         func matchesPostScriptFace() async throws {
             let fonts = fonts()
             try await fonts.load("Lobster")
-            let web = pixels(image(Text("Hamburgefonstiv").font(web: "Lobster", size: 24), fonts: fonts))
+            let settled = AsyncLatch()
+            let web = pixels(image(webText(settled: settled), fonts: fonts))
             #expect(web != nil)
             #expect(web == pixels(image(Text("Hamburgefonstiv").font(.custom("Lobster-Regular", size: 24)))))
             #expect(web != pixels(image(Text("Hamburgefonstiv").font(.system(size: 24)))))
+            try await settled.wait()
             try await fonts.removeAll()
         }
 
@@ -73,8 +82,10 @@ extension IntegrationTests {
             let requests = server.requests.count
             try await widget.load("Lobster", styles: [.regular])
             #expect(server.requests.count == requests)
-            let once = pixels(image(Text("Hamburgefonstiv").font(web: "Lobster", size: 24), fonts: widget))
+            let settled = AsyncLatch()
+            let once = pixels(image(webText(settled: settled), fonts: widget))
             #expect(once == pixels(image(Text("Hamburgefonstiv").font(.custom("Lobster-Regular", size: 24)))))
+            try await settled.wait()
             try await widget.removeAll()
             try await seed.removeAll()
         }
@@ -85,8 +96,10 @@ extension IntegrationTests {
             let fonts = fonts()
             try await fonts.load("Lobster")
             func width(_ view: some View, _ size: DynamicTypeSize, _ fonts: WebFonts?) -> Int { image(view, fonts: fonts, sizeCategory: size)?.width ?? 0 }
-            let web = Text("Hamburgefonstiv").font(web: "Lobster", size: 24)
-            let webGrowth = Double(width(web, .accessibility5, fonts)) / Double(width(web, .large, fonts))
+            let large = AsyncLatch(), huge = AsyncLatch()
+            let webGrowth = Double(width(webText(settled: huge), .accessibility5, fonts)) / Double(width(webText(settled: large), .large, fonts))
+            try await large.wait()
+            try await huge.wait()
             let emptyRoot = TempDirectory()
             defer { withExtendedLifetime(emptyRoot) {} }
             let empty = WebFonts(configuration: .init(source: PreviewFontSource(behavior: .neverAnswers)), registrar: CoreTextRegistrar(),
