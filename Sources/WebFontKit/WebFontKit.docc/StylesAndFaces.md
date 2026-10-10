@@ -20,4 +20,4 @@ for font in WebFonts.shared.downloaded where font.family == "Poppins" {
 
 ## Families iOS also ships
 
-112 Google families are also iOS system fonts (iOS 26.5). A load of any of them reports `.loaded`. For most, the system's face draws; for six (Bebas Neue, Carlito, STIX Two Text, Noto Sans Oriya, Noto Nastaliq Urdu, Noto Sans Tai Tham), the downloaded face draws by its PostScript name. For all of them, lookup by family name (`.custom(family)`, `UIFont(name: family)`) returns Apple's copy. On macOS the downloaded copy registers and wins.
+Some Google families are also iOS system fonts. Loading one reports `.loaded`, but lookup by family name (`.custom(family)`, `UIFont(name: family)`) returns Apple's copy, so draw the downloaded face by its `DownloadedFont.postScriptName`. On macOS the downloaded copy registers and wins.

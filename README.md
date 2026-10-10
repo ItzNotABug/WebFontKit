@@ -3,9 +3,6 @@
 [![CI](https://github.com/ItzNotABug/WebFontKit/actions/workflows/ci.yml/badge.svg)](https://github.com/ItzNotABug/WebFontKit/actions/workflows/ci.yml)
 [![Swift 6.2](https://img.shields.io/badge/Swift-6.2-F05138?logo=swift&logoColor=white)](https://www.swift.org)
 [![Platforms](https://img.shields.io/badge/platforms-iOS%2017%2B%20%7C%20macOS%2014%2B-0A84FF?logo=apple&logoColor=white)](#installation)
-[![Swift Package Manager](https://img.shields.io/badge/SwiftPM-compatible-34C759)](#installation)
-[![Strict concurrency](https://img.shields.io/badge/concurrency-strict-5E5CE6)](https://www.swift.org/documentation/concurrency/)
-[![Dependencies](https://img.shields.io/badge/dependencies-0-8E8E93)](Package.swift)
 [![License](https://img.shields.io/badge/license-Apache%202.0-blue)](LICENSE)
 
 Any Google Font by name, in one line of SwiftUI. Downloaded once, kept on disk, drawn by Apple's own font APIs.
@@ -117,7 +114,7 @@ struct MyClient: FontSource {
         return data
     }
 
-    // Optional: change it to replace stored files with a new version.
+    // Optional: bump it to replace stored files.
     func cacheKey(for font: FontRequest) -> String { "\(font.family)-v2" }
 }
 ```
@@ -130,7 +127,7 @@ struct MyClient: FontSource {
 ```swift
 WebFonts.shared.configure(.init(storage: .session))  // keep fonts for this launch only
 
-WebFonts.shared.downloaded                            // family, style, PostScript name, size, date
+let stored = WebFonts.shared.downloaded               // family, style, PostScript name, size, date
 try await WebFonts.shared.remove("Lobster")
 try await WebFonts.shared.removeAll()
 
@@ -153,7 +150,7 @@ A showcase in `Example/`: try any family, browse a type gallery, manage stored f
 
 ## Development
 
-`scripts/build.sh` builds everything with zero warnings. `scripts/verify.sh` runs every test suite, on macOS and iOS, before a release.
+`scripts/build.sh` builds everything with zero warnings, and `scripts/verify.sh` runs every test suite on macOS and iOS before a release. Both need [XcodeGen](https://github.com/yonaskolb/XcodeGen) for the Example app.
 
 ## License
 

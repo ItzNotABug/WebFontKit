@@ -4,7 +4,7 @@ Configure once at launch, then use the modifier or load and use Apple's APIs.
 
 ## Configure at launch
 
-All settings are optional. Call ``WebFonts/configure(_:)`` early, in `App.init`, so saved fonts are registered before the first frame as often as possible.
+All settings are optional. Call ``WebFonts/configure(_:)`` early, in `App.init`, so saved fonts are usually registered before the first frame.
 
 ```swift
 @main struct MyApp: App {
@@ -23,7 +23,7 @@ Text("Hello").font(web: "Inter", size: 17, weight: .bold) { phase in
 }
 ```
 
-- `size:` scales with Dynamic Type, like `Font.custom(_:size:)`; `fixedSize:` never scales, and neither does its fallback.
+- `size:` scales with Dynamic Type, like `Font.custom(_:size:)`; `fixedSize:` never scales, and neither does the default fallback.
 - The default fallback is the system font at the same size, weight and italic. Pass `fallback:` to choose another.
 - A registered font draws on the first frame, and `onPhase` reports `.loaded` at once.
 - `.font(web:)` returns `some View`, not `Text`, so it can't be used in `Text` concatenation or `TextField(prompt:)`. There, load first and use `.font(.custom(_:size:))`.
@@ -40,7 +40,7 @@ let results = await WebFonts.shared.load(["Pacifico", "Bebas Neue"])   // never 
 
 ## Errors and cancellation
 
-``WebFontError`` has six cases. Two kinds of `load` throw `CancellationError` instead, which is not a `WebFontError`: a load whose caller is cancelled, and a load that `remove` (for its family) or `removeAll` overtakes before it stores anything, even though its caller was not cancelled. An overtaken load stores nothing, so a removal is never undone by a load already in flight, and `onPhase` does not report it. A load that starts after `remove` returns stores normally.
+A `load` throws `CancellationError`, not a ``WebFontError``, when its caller is cancelled or when `remove` or `removeAll` overtakes it before it stores anything, so a removal is never undone by a load in flight. A load that starts after `remove` returns stores normally.
 
 ## Housekeeping
 
