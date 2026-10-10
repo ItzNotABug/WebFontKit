@@ -140,6 +140,7 @@ for await event in WebFonts.shared.events { print(event) }  // loads, failures, 
 
 - **Load the styles you draw.** iOS never fakes bold or italic for a downloaded font. A style the family lacks draws its regular face.
 - **Privacy.** The default source sends the user's IP address to Google, like any web font. Say so in your privacy policy, or self-host.
+- **Logs.** WebFontKit logs to the unified log under the subsystem `com.itznotabug.webfontkit`, with file URLs private.
 - **Licences.** Google Fonts are open-licensed, mostly under the SIL OFL; see the [attributions](https://fonts.google.com/attribution).
 
 For the full guide (styles, system fonts, widgets, self-hosting), open the package in Xcode and choose **Product › Build Documentation**.

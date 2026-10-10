@@ -63,6 +63,7 @@ struct ConfigurationTests {
 
     @Test("configuring WebFonts.shared first warms the configured directory, not the default one")
     func shared() async {
+        // The only test that touches WebFonts.shared, so it is configured before any use.
         let directory = TempDirectory()
         WebFonts.shared.configure(WebFonts.Configuration(storage: .persistent, directory: directory.url))
         await WebFonts.shared.waitForWarmUp()

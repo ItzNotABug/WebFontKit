@@ -33,7 +33,7 @@ struct DownloaderTests {
         let lastAppend: Int = try #require(appendPositions.last)
         #expect(creates.count == 1)
         #expect(creates.first?.url == partial)
-        #expect(!appendPositions.isEmpty)
+        #expect(appendPositions.count > 1)
         #expect(lastAppend < close)
         #expect(calls.allSatisfy { !$0.onMainThread })
     }
