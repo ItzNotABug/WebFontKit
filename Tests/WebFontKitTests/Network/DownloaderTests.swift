@@ -15,7 +15,7 @@ struct DownloaderTests {
         )
     }
 
-    @Test("the body goes to disk chunk by chunk, off the main thread")
+    @Test("the body is appended to one partial file, off the main thread; streamsBeforeTheEnd proves it streams")
     func bodyToDisk() async throws {
         let harness = Harness()
         let size = 6 * megabyte
@@ -33,7 +33,7 @@ struct DownloaderTests {
         let lastAppend: Int = try #require(appendPositions.last)
         #expect(creates.count == 1)
         #expect(creates.first?.url == partial)
-        #expect(appendPositions.count > 1)
+        #expect(!appendPositions.isEmpty)
         #expect(lastAppend < close)
         #expect(calls.allSatisfy { !$0.onMainThread })
     }
