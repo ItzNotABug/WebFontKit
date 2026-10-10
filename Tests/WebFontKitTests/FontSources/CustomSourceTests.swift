@@ -56,6 +56,19 @@ struct CustomSourceTests {
         #expect(harness.leftovers.isEmpty)
     }
 
+    @Test("a remote source's public fetch refuses a file that declares more than the library's cap")
+    func remoteFetchDeclaredOverCap() async throws {
+        let harness = Harness()
+        let source = OnlyRequestSource()
+        var response = StubResponse.font(Fixtures.data(Fixtures.lobster))
+        response.headers["Content-Length"] = String(Downloader.sizeCap + 1)
+        harness.server.respond(to: source.url, with: response)
+
+        await #expect(throws: WebFontError.invalidFont) {
+            try await source.fetch(request: FontRequest(family: "Lobster"), session: harness.session)
+        }
+    }
+
     @Test("a remote source's download over the fetcher's cap is cancelled while the stub holds the rest, leaving nothing")
     func remoteDownloadCap() async throws {
         let harness = Harness()

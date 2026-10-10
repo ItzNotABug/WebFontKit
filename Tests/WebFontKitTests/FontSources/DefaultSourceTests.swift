@@ -81,6 +81,18 @@ struct DefaultSourceTests {
         #expect(harness.leftovers.isEmpty)
     }
 
+    @Test("the public fetch refuses a file that declares more than the library's cap")
+    func fetchDeclaredOverCap() async throws {
+        let harness = Harness()
+        var file = StubResponse.font(Fixtures.data(Fixtures.lobster))
+        file.headers["Content-Length"] = String(Downloader.sizeCap + 1)
+        harness.serveLobster(file: file)
+
+        await #expect(throws: WebFontError.invalidFont) {
+            try await DefaultFontSource.default.fetch(FontRequest(family: "Lobster"), session: harness.session, logSink: harness.logSink)
+        }
+    }
+
     @Test("a style missing from the answer is .notFound for fetch")
     func fetchMissingStyle() async throws {
         let harness = Harness()

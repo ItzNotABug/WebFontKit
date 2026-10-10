@@ -57,7 +57,7 @@ extension WebFonts {
                           case .font(hash, _) = parsed.kind else { return nil }
                     return entry
                 }.max { $0.modificationDate < $1.modificationDate }
-                if let file = newest, files.fileExists(at: file.url), let info = registry.registrar.faceInfo(at: file.url) {
+                if let file = newest, let info = registry.registrar.faceInfo(at: file.url) {
                     // Another process may have stored it under a newer cache key than our entry's.
                     let face = StoredFace(key: key, url: file.url, keyHash: hash, info: info, file: file)
                     switch await registry.registerReplacingStale(face, epochs: epochs, store: store) {

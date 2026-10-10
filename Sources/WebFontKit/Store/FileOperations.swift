@@ -34,11 +34,6 @@ extension FileOperations {
     func contentsOfDirectory(at url: URL) throws -> [FileEntry] {
         try contentsOfDirectory(at: url, includingDirectories: false)
     }
-
-    /// Finds the file in its directory's listing; the disk reads the one file instead.
-    func fileEntry(at url: URL) throws -> FileEntry? {
-        try contentsOfDirectory(at: url.deletingLastPathComponent()).first { sameFile(url)($0.url) }
-    }
 }
 
 /// The real disk.

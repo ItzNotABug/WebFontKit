@@ -6,7 +6,7 @@ import os
 /// The real disk, with every call recorded and failures injectable.
 public final class FakeFileOperations: FileOperations, Sendable {
     public enum Operation: String, Sendable {
-        case createDirectory, contentsOfDirectory, removeDirectory, fileExists, write, rename, delete
+        case createDirectory, contentsOfDirectory, removeDirectory, fileExists, fileEntry, write, rename, delete
         case setExcludedFromBackup, createPartial, append, close
         case setExtendedAttribute, extendedAttribute
     }
@@ -92,6 +92,11 @@ public final class FakeFileOperations: FileOperations, Sendable {
     public func removeDirectory(at url: URL) throws {
         try record(.removeDirectory, url)
         try disk.removeDirectory(at: url)
+    }
+
+    public func fileEntry(at url: URL) throws -> FileEntry? {
+        try record(.fileEntry, url)
+        return try disk.fileEntry(at: url)
     }
 
     public func fileExists(at url: URL) -> Bool {

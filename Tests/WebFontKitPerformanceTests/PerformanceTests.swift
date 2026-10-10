@@ -22,9 +22,9 @@ final class PerformanceTests: XCTestCase {
 
     /// Runs async work from XCTest's synchronous measure blocks, and rethrows its error.
     private func run<T: Sendable>(timeout: TimeInterval = 60, _ body: @escaping @Sendable () async throws -> T) throws -> T {
-        let done = expectation(description: "async work")
+        let done = XCTestExpectation(description: "async work")
         let result = Locked<Result<T, any Error>?>(nil)
-        Task.detached {
+        let task = Task.detached {
             do {
                 let value = try await body()
                 result.withLock { $0 = .success(value) }
@@ -33,7 +33,12 @@ final class PerformanceTests: XCTestCase {
             }
             done.fulfill()
         }
-        wait(for: [done], timeout: timeout)
+        if XCTWaiter.wait(for: [done], timeout: timeout) != .completed {
+            // Cancelled and awaited, so a slow iteration can't run on into the next one.
+            task.cancel()
+            _ = XCTWaiter.wait(for: [done], timeout: 10)
+            XCTFail("timed out after \(Int(timeout)) s")
+        }
         return try XCTUnwrap(result.withLock { $0 }).get()
     }
 
