@@ -26,6 +26,7 @@ extension FontStyle {
 
 /// What the table maps a requested face to.
 struct RegistryEntry: Sendable, Equatable {
+    /// A downloaded file, or a system font that answers the name instead.
     enum Kind: Sendable, Equatable {
         /// `registeredHere` is false when another file with the same PostScript name answers for it.
         case file(url: URL, keyHash: String, registeredHere: Bool)
@@ -102,8 +103,8 @@ struct RegistryState: Sendable {
 }
 
 func sameFile(_ lhs: URL) -> (URL) -> Bool {
-    let path = lhs.resolvingSymlinksInPath().path
-    return { $0.resolvingSymlinksInPath().path == path }
+    let path = lhs.resolvingSymlinksInPath().path(percentEncoded: false)
+    return { $0.resolvingSymlinksInPath().path(percentEncoded: false) == path }
 }
 
 /// A stored file, read but not yet in the table.

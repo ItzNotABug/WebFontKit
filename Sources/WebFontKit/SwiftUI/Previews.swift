@@ -1,5 +1,6 @@
 import SwiftUI
 
+#if DEBUG
 /// A source for previews: it never answers, or always fails, and never touches the network.
 struct PreviewFontSource: FontSource {
     enum Behavior: Sendable {
@@ -7,10 +8,10 @@ struct PreviewFontSource: FontSource {
         case fails(WebFontError)
     }
 
-    var behaviour: Behavior
+    var behavior: Behavior
 
     func fetch(_ font: FontRequest) async throws -> Data {
-        switch behaviour {
+        switch behavior {
         case .neverAnswers:
             try await Task.sleep(for: .seconds(86_400))
             throw CancellationError()
@@ -20,18 +21,18 @@ struct PreviewFontSource: FontSource {
     }
 
     /// An instance on a throwaway session store, so previews never touch the real one.
-    static func fonts(_ behaviour: Behavior) -> WebFonts {
+    static func fonts(_ behavior: Behavior) -> WebFonts {
         WebFonts(
-            configuration: WebFonts.Configuration(source: PreviewFontSource(behaviour: behaviour), storage: .session),
+            configuration: WebFonts.Configuration(source: PreviewFontSource(behavior: behavior), storage: .session),
             registrar: CoreTextRegistrar(), fileOperations: DiskFileOperations(),
-            root: FileManager.default.temporaryDirectory.appendingPathComponent("WebFontKit-previews")
+            root: URL.temporaryDirectory.appending(component: "WebFontKit-previews", directoryHint: .isDirectory)
         )
     }
 }
 
 /// What the library previews show: the fallback while loading, after a failure, and a custom fallback.
 struct WebFontPreviewContent: View {
-    var behaviour: PreviewFontSource.Behavior
+    var behavior: PreviewFontSource.Behavior
     var fallback: Font?
 
     var body: some View {
@@ -41,18 +42,19 @@ struct WebFontPreviewContent: View {
             Text("Fixed size").font(web: "Lobster", fixedSize: 13, fallback: fallback)
         }
         .padding()
-        .environment(\.webFonts, PreviewFontSource.fonts(behaviour))
+        .environment(\.webFonts, PreviewFontSource.fonts(behavior))
     }
 }
 
 #Preview("Loading") {
-    WebFontPreviewContent(behaviour: .neverAnswers, fallback: nil)
+    WebFontPreviewContent(behavior: .neverAnswers, fallback: nil)
 }
 
 #Preview("Failed") {
-    WebFontPreviewContent(behaviour: .fails(.offline), fallback: nil)
+    WebFontPreviewContent(behavior: .fails(.offline), fallback: nil)
 }
 
 #Preview("Custom fallback") {
-    WebFontPreviewContent(behaviour: .neverAnswers, fallback: .system(.title, design: .serif))
+    WebFontPreviewContent(behavior: .neverAnswers, fallback: .system(.title, design: .serif))
 }
+#endif

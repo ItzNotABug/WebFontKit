@@ -9,6 +9,7 @@ enum CoreTextCode {
 }
 
 extension Registry {
+    /// How registering one stored face ended.
     enum RegistrationResult: Sendable, Equatable {
         case added(RegistryEntry)
         case overtaken
@@ -32,7 +33,6 @@ extension Registry {
         let name = face.postScriptName
         await nameTurns.take(name)
         defer { nameTurns.release(name) }
-        let row = downloadedRow(for: face, postScriptName: name)
 
         let existing = state.withLock { $0.entries(named: name) }
         if let same = existing.first(where: { $0.key == face.key }) {
@@ -43,8 +43,11 @@ extension Registry {
                 return await recordSystemCollision(face, epochs: epochs, store: store)
             }
             log("registry", .info, "\(face.key) shares the PostScript name \(name) with \(other.key); not registered again")
-            return await insertUnregistered(face, row: row, epochs: epochs)
+            return await insertUnregistered(face, row: downloadedRow(for: face, postScriptName: name), epochs: epochs)
         }
+
+        // Read only on the paths that insert a row: it costs a stat.
+        let row = downloadedRow(for: face, postScriptName: name)
 
         #if os(macOS)
         if let active = registrar.activeFace(postScriptName: name), let url = active.fileURL,
@@ -56,15 +59,15 @@ extension Registry {
 
         let failures = await registrar.register(urls: [face.url])
         switch failures[face.url] {
-        case nil, CoreTextCode.alreadyRegistered?:
-            if failures[face.url] != nil {
-                log("registry", .debug, "\(face.key) was already registered from this file (105)")
-            }
+        case nil:
+            return await openAndInsert(face, row: row, epochs: epochs)
+        case CoreTextCode.alreadyRegistered?:
+            log("registry", .debug, "\(face.key) was already registered from this file")
             return await openAndInsert(face, row: row, epochs: epochs)
         case CoreTextCode.duplicatedName?:
             return await resolveDuplicatedName(face, row: row, epochs: epochs, store: store)
         case let code?:
-            log("registry", .error, "Registering \(face.key) failed with CoreText error \(code)", private: [face.url.path])
+            log("registry", .error, "Registering \(face.key) failed with CoreText error \(code)", private: [face.url.path(percentEncoded: false)])
             return await failure(face, epochs: epochs, registered: false)
         }
     }
@@ -90,18 +93,18 @@ extension Registry {
             return await insertUnregistered(face, row: row, epochs: epochs)
         }
         #endif
-        log("registry", .error, "\(face.key) did not open as \(face.postScriptName) from its file (got \(opened.postScriptName), \(opened.glyphCount) glyphs)", private: [face.url.path])
+        log("registry", .error, "\(face.key) did not open as \(face.postScriptName) from its file (got \(opened.postScriptName), \(opened.glyphCount) glyphs)", private: [face.url.path(percentEncoded: false)])
         return await failure(face, epochs: epochs, registered: true)
     }
 
     /// Not ours: another instance's `.wfkfont`, or else a system font.
     private func resolveDuplicatedName(_ face: StoredFace, row: DownloadedFont?, epochs: Epochs?, store: Store) async -> RegistrationResult {
         guard let active = registrar.activeFace(postScriptName: face.postScriptName) else {
-            log("registry", .error, "305 for \(face.key), but \(face.postScriptName) does not resolve")
+            log("registry", .error, "\(face.key): CoreText reports \(face.postScriptName) as a duplicated name, but nothing answers it")
             return await failure(face, epochs: epochs, registered: false)
         }
         if let url = active.fileURL, url.pathExtension == StoredFileName.fontExtension {
-            log("registry", .info, "305 for \(face.key): \(face.postScriptName) is served by another WebFontKit file; kept unregistered here", private: [url.path])
+            log("registry", .info, "\(face.key): another WebFontKit file already serves \(face.postScriptName); kept unregistered here", private: [url.path(percentEncoded: false)])
             return await insertUnregistered(face, row: row, epochs: epochs)
         }
         return await recordSystemCollision(face, epochs: epochs, store: store)
@@ -124,7 +127,7 @@ extension Registry {
             return .overtaken
         }
         _ = try? files.delete(at: face.url)
-        log("registry", .info, "\(face.key) is also a system font (305 mode): drawing the system's \(face.postScriptName)")
+        log("registry", .info, "\(face.key) is also a system font with the same PostScript name: drawing the system's \(face.postScriptName)")
         return .added(entry)
     }
 
@@ -157,7 +160,7 @@ extension Registry {
         guard resolved.familyName == face.familyName, let url = resolved.fileURL,
               !sameFile(face.url)(url), url.pathExtension != StoredFileName.fontExtension
         else { return }
-        log("registry", .info, "\(face.key) is also a system font (silent mode): \(face.postScriptName) draws the downloaded face, the family name \(face.familyName) draws the system's")
+        log("registry", .info, "\(face.key) is also a system font under another PostScript name: \(face.postScriptName) draws the downloaded face, the family name \(face.familyName) draws the system's")
         #endif
     }
 }

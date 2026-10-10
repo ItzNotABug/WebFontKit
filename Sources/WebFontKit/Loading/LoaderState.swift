@@ -11,8 +11,8 @@ struct StyleKey: Hashable, Sendable {
     var face: FaceKey { FaceKey(family: family, style: style) }
 }
 
-/// One style's shared download: stage 1 (the family's CSS2 `resolve`, default
-/// source only), then stage 2 (download and validate), then one commit.
+/// One style's shared download: the family's CSS2 resolve (default source only),
+/// then the fetch and validation, then one commit.
 struct StyleJob: Sendable {
     enum Stage: Sendable {
         case resolving(UUID)
@@ -39,12 +39,14 @@ struct StyleJob: Sendable {
     }
 }
 
+/// How one style's commit ended.
 enum CommitOutcome: Sendable, Equatable {
     case added
     case overtaken
     case failed(WebFontError)
 }
 
+/// What a parked call is resumed with.
 enum CallResult: Sendable {
     case ready([StyleKey: ValidatedFace])
     case failed(WebFontError)
@@ -111,7 +113,7 @@ struct LoaderState: Sendable {
     }
 
     /// Decides every waiting call whose styles have all been settled, starts each
-    /// stage 2 whose waiters have all decided, and drops jobs nobody waits on.
+    /// fetch whose waiters have all decided, and drops jobs nobody waits on.
     mutating func advance(_ effects: inout Effects) {
         for (id, call) in calls where call.continuation != nil {
             var faces: [StyleKey: ValidatedFace] = [:]
@@ -196,5 +198,31 @@ struct LoaderState: Sendable {
             }
             closes[id] = nil
         }
+    }
+}
+
+/// The configuration in force, resolved once.
+struct Snapshot: Sendable {
+    let source: any FontSource
+    var sourceID: Int
+    var directory: URL
+    var session: URLSession
+
+    init(_ configuration: WebFonts.Configuration, sourceID: Int, root: URL?) {
+        source = configuration.source
+        self.sourceID = sourceID
+        directory = StoreLocation.directory(isSession: configuration.storage == .session,
+                                            configured: configuration.directory, root: root)
+        session = configuration.session ?? LibrarySession.shared
+    }
+
+    var usesDefaultSource: Bool { source is DefaultFontSource }
+
+    func cacheKey(_ key: FaceKey) -> String {
+        source.cacheKey(for: FontRequest(family: key.family, style: key.style))
+    }
+
+    func keyHash(_ key: FaceKey) -> String {
+        StoredFileName.keyHash(family: key.family, style: key.style, cacheKey: cacheKey(key))
     }
 }

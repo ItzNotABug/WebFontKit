@@ -56,7 +56,7 @@ public protocol RemoteFontSource: FontSource {
     ///
     /// ```swift
     /// func request(for font: FontRequest) async throws -> URLRequest {
-    ///     URLRequest(url: base.appendingPathComponent("\(font.family)-\(font.style.weight).ttf"))
+    ///     URLRequest(url: base.appending(path: "\(font.family)-\(font.style.weight).ttf"))
     /// }
     /// ```
     func request(for font: FontRequest) async throws -> URLRequest
@@ -69,7 +69,7 @@ extension RemoteFontSource {
     /// let bytes = try await MyServer(token: token).fetch(FontRequest(family: "Lobster"))
     /// ```
     public func fetch(_ font: FontRequest) async throws -> Data {
-        try await fetch(request: font, session: .shared)
+        try await fetch(request: font, session: LibrarySession.shared)
     }
 
     @concurrent

@@ -13,12 +13,11 @@ final class EventHub: Sendable {
     func stream() -> AsyncStream<WebFontEvent> {
         let (stream, continuation) = AsyncStream<WebFontEvent>.makeStream(bufferingPolicy: .bufferingNewest(256))
         let id = UUID()
-        let replay = state.withLock { state -> WebFontEvent? in
+        // Yielded under the lock (`yield` never blocks), so an event emitted meanwhile can't
+        // arrive before the replay.
+        state.withLock { state in
             state.listeners[id] = continuation
-            return state.lastWarmedUp
-        }
-        if let replay {
-            continuation.yield(replay)
+            if let replay = state.lastWarmedUp { continuation.yield(replay) }
         }
         continuation.onTermination = { [weak self] _ in
             _ = self?.state.withLock { $0.listeners.removeValue(forKey: id) }

@@ -36,7 +36,7 @@ public struct HostedFontSource: RemoteFontSource {
     /// // https://cdn.example.com/fonts/Inter-Bold.ttf
     /// ```
     public func request(for font: FontRequest) async throws -> URLRequest {
-        URLRequest(url: base.appendingPathComponent(Self.fileName(for: font)))
+        URLRequest(url: base.appending(path: Self.fileName(for: font)))
     }
 
     static func fileName(for font: FontRequest) -> String {

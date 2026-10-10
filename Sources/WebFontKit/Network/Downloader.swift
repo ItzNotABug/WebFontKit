@@ -17,6 +17,7 @@ enum Downloader {
     /// Decoded bytes: gzip makes `Content-Length` meaningless.
     static let sizeCap = 64 * 1024 * 1024
 
+    /// A body read into memory, with the status and content type it came with.
     struct Response: Sendable {
         var statusCode: Int
         var contentType: String?
@@ -197,7 +198,7 @@ final class DataTaskDelegate: NSObject, URLSessionDataDelegate, Sendable {
                 return
             }
             queue.async { [partial] in
-                let url = directory.appendingPathComponent(StoredFileName.partial())
+                let url = directory.appending(component: StoredFileName.partial())
                 partial.url = url
                 do {
                     partial.handle = try files.createPartial(at: url)

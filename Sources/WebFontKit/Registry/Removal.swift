@@ -1,12 +1,14 @@
 import Foundation
 
 extension Registry {
+    /// Why a system-collision marker no longer holds.
     enum StaleMarkerReason: String, Sendable, Equatable {
         case attributeMissing = "attribute missing"
         case nameDoesNotResolve = "name does not resolve"
         case nameResolvesToStoredFont = "name resolves to a .wfkfont"
     }
 
+    /// A marker still naming a system font, or a stale one to delete.
     enum MarkerVerdict: Sendable, Equatable {
         case valid(postScriptName: String)
         case stale(StaleMarkerReason)
@@ -70,7 +72,7 @@ extension Registry {
         var deletedFamilies = Set<String>()
         var searched = Set(directories.map { $0.standardizedFileURL })
         searched.formUnion(removed.compactMap { $0.fileURL?.deletingLastPathComponent().standardizedFileURL })
-        for directory in searched.sorted(by: { $0.path < $1.path }) {
+        for directory in searched.sorted(by: { $0.path(percentEncoded: false) < $1.path(percentEncoded: false) }) {
             let store = Store(directory: directory, files: files)
             do {
                 for owned in try store.ownedFiles() {
