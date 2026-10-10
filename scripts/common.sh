@@ -1,7 +1,7 @@
 # Shared helpers for build.sh, verify.sh and CI. Source it; don't run it.
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-WORK="${WEBFONTKIT_WORK_DIR:-$ROOT/.build/gates}"
+WORK="$ROOT/.build/logs"
 mkdir -p "$WORK"
 
 log() { printf '\n==> %s\n' "$*"; }
@@ -15,8 +15,10 @@ with_timeout() {
     perl -e '
         my $seconds = shift;
         my $pid = fork // die "fork: $!";
-        if ($pid == 0) { setpgrp(0, 0); exec @ARGV or die "exec: $!" }
-        $SIG{INT} = $SIG{TERM} = sub { kill "TERM", -$pid; exit 130 };
+        if ($pid == 0) { setpgrp(0, 0); exec { $ARGV[0] } @ARGV or die "exec: $!" }
+        # Ctrl-C reaches only this process, so stop the child group, then die of the same
+        # signal so the calling script stops too.
+        $SIG{INT} = $SIG{TERM} = sub { my $signal = shift; kill "TERM", -$pid; waitpid($pid, 0); $SIG{$signal} = "DEFAULT"; kill $signal, $$ };
         $SIG{ALRM} = sub { print STDERR "timed out after ${seconds}s\n"; kill "TERM", -$pid; sleep 5; kill "KILL", -$pid; exit 124 };
         alarm $seconds;
         waitpid($pid, 0);
@@ -68,10 +70,11 @@ swiftpm_no_warnings() {
         tail -40 "$out"
         fail "$name failed (log: $out)"
     fi
-    if grep -q 'warning:' "$out"; then
-        grep 'warning:' "$out"
+    if grep -qE '(^|: )warning: ' "$out"; then
+        grep -E '(^|: )warning: ' "$out"
         fail "$name printed warnings"
     fi
+    grep -E 'Test run with' "$out" | tail -1 || true
 }
 
 # Runs an xcodebuild build into a fresh result bundle, failing on a nonzero exit
@@ -82,17 +85,15 @@ xcodebuild_no_warnings() {
     local bundle="$WORK/$name.xcresult" out="$WORK/$name.log"
     rm -rf "$bundle"
     if ! "$@" -resultBundlePath "$bundle" SWIFT_TREAT_WARNINGS_AS_ERRORS=YES >"$out" 2>&1; then
-        grep -E 'error:|failed|FAIL' "$out" | tail -40
+        grep -E 'error:|failed|FAIL|timed out' "$out" | tail -40 || true
         fail "$name failed (log: $out)"
     fi
-    local warnings
-    warnings=$(xcrun xcresulttool get build-results --path "$bundle" | python3 -c '
-import json, sys
-d = json.load(sys.stdin)
-if d.get("status") != "succeeded" or d.get("errorCount", 0):
-    sys.exit("build status %s, %s errors" % (d.get("status"), d.get("errorCount")))
-print(d.get("warningCount", 0))
-') || fail "$name: could not read build results"
+    local results="$WORK/$name.json" status errors warnings
+    xcrun xcresulttool get build-results --path "$bundle" >"$results" || fail "$name: could not read build results"
+    status=$(plutil -extract status raw "$results")
+    errors=$(plutil -extract errorCount raw "$results" 2>/dev/null || echo 0)
+    warnings=$(plutil -extract warningCount raw "$results" 2>/dev/null || echo 0)
+    [ "$status" = "succeeded" ] && [ "$errors" = "0" ] || fail "$name: build $status with $errors error(s)"
     [ "$warnings" = "0" ] || fail "$name: $warnings warning(s)"
 }
 
@@ -102,7 +103,7 @@ xcodebuild_tests() {
     local bundle="$WORK/$name.xcresult" out="$WORK/$name.log"
     rm -rf "$bundle"
     if ! "$@" -resultBundlePath "$bundle" >"$out" 2>&1; then
-        grep -E 'error:|failed|FAIL' "$out" | tail -40
+        grep -E 'error:|failed|FAIL|timed out' "$out" | tail -40 || true
         fail "$name failed (log: $out)"
     fi
 }

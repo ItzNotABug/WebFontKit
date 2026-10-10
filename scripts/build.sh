@@ -6,9 +6,10 @@
 set -euo pipefail
 source "$(dirname "$0")/common.sh"
 cd "$ROOT"
+command -v xcodegen >/dev/null || fail "needs XcodeGen for the Example app (brew install xcodegen)"
 
 log "Package.swift has no unsafeFlags"
-! grep -n 'unsafeFlags' Package.swift || fail "Package.swift contains unsafeFlags, which SwiftPM rejects in dependencies"
+! grep -nE '^[^/]*unsafeFlags\(' Package.swift || fail "Package.swift contains unsafeFlags, which SwiftPM rejects in dependencies"
 
 log "macOS: package and tests"
 swiftpm_no_warnings build-macos swift build --build-tests -Xswiftc -warnings-as-errors

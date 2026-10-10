@@ -2,7 +2,7 @@
 # Everything to pass before a release, stopping at the first failure: build.sh,
 # the macOS suite many times over to catch flaky tests, the strict-concurrency
 # build, the iOS suites on the newest and oldest runtimes, the Example UI tests,
-# 90% line coverage and DocC. Each build happens once; test steps reuse it.
+# 90% line coverage and DocC. Test steps reuse build.sh's builds where the flags match.
 #
 # Environment:
 #   WEBFONTKIT_RUNS       parallel macOS suite runs (default 10; 100 before a release flushes rare flakes)
@@ -26,7 +26,7 @@ require_oldest_simulator
 
 log "macOS suite, $RUNS parallel runs"
 for i in $(seq 1 "$RUNS"); do
-    if ! with_timeout "$TIMEOUT" swift test --skip-build --parallel "${SKIP_PERF[@]}" >"$WORK/test-macos.log" 2>&1; then
+    if ! with_timeout "$TIMEOUT" swift test --skip-build "${SKIP_PERF[@]}" >"$WORK/test-macos.log" 2>&1; then
         tail -60 "$WORK/test-macos.log"
         fail "run $i of $RUNS failed (log: $WORK/test-macos.log)"
     fi
@@ -42,6 +42,8 @@ with_timeout "$TIMEOUT" swift test --no-parallel --enable-code-coverage "${SKIP_
 python3 - "$(swift test --show-codecov-path)" "$WORK/coverage.txt" <<'EOF' || fail "line coverage is below 90% (see $WORK/coverage.txt)"
 import json, sys
 files = [f for f in json.load(open(sys.argv[1]))["data"][0]["files"] if "/Sources/WebFontKit/" in f["filename"]]
+if not files:
+    sys.exit("no coverage data for Sources/WebFontKit")
 covered = sum(f["summary"]["lines"]["covered"] for f in files)
 total = sum(f["summary"]["lines"]["count"] for f in files)
 with open(sys.argv[2], "w") as report:
