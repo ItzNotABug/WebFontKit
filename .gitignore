@@ -4,6 +4,4 @@
 xcuserdata/
 DerivedData/
 *.xcresult
-/plan/
 Example/Signing.local.xcconfig
-/scripts/local/

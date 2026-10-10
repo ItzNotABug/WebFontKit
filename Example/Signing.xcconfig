@@ -1,2 +1,5 @@
-// For device builds, put DEVELOPMENT_TEAM = <your team> in Signing.local.xcconfig (gitignored).
+// To sign for a device, put your own values in Signing.local.xcconfig (gitignored):
+//   DEVELOPMENT_TEAM = <your team>
+//   BUNDLE_ID_PREFIX = <a prefix you own>
+BUNDLE_ID_PREFIX = com.example.webfontkit
 #include? "Signing.local.xcconfig"

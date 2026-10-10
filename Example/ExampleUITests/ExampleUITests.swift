@@ -16,9 +16,17 @@ final class ExampleUITests: XCTestCase {
 
     @MainActor
     private func waitForPhases(_ app: XCUIApplication, _ expected: String) {
+        waitForPhases(app, matching: NSPredicate(format: "value == %@", expected))
+    }
+
+    /// Returns the phases once they match, for further checks.
+    @MainActor
+    @discardableResult
+    private func waitForPhases(_ app: XCUIApplication, matching predicate: NSPredicate) -> String {
         let phases = app.staticTexts["phases"]
-        let match = XCTNSPredicateExpectation(predicate: NSPredicate(format: "value == %@", expected), object: phases)
+        let match = XCTNSPredicateExpectation(predicate: predicate, object: phases)
         XCTAssertEqual(XCTWaiter.wait(for: [match], timeout: 20), .completed, "phases were \(phases.value ?? "nil")")
+        return phases.value as? String ?? ""
     }
 
     @MainActor
@@ -37,12 +45,10 @@ final class ExampleUITests: XCTestCase {
     @MainActor
     func testAStoredFontLoadsOfflineAfterARelaunch() {
         let directory = UUID().uuidString
-        let seed = launch(["-WebFontKitDirectory", directory, "-WebFontKitStub", "-WebFontKitSeed", "Lobster"])
+        let seed = launch(["-WebFontKitDirectory", directory, "-WebFontKitStub", "-WebFontKitSeed", "Pacifico"])
         XCTAssertTrue(seed.wait(for: .notRunning, timeout: 30))
         let app = launch(["-WebFontKitDirectory", directory, "-WebFontKitStubOffline"])
-        let phases = app.staticTexts["phases"]
-        let loaded = XCTNSPredicateExpectation(predicate: NSPredicate(format: "value ENDSWITH 'loaded'"), object: phases)
-        XCTAssertEqual(XCTWaiter.wait(for: [loaded], timeout: 20), .completed, "phases were \(phases.value ?? "nil")")
-        XCTAssertFalse((phases.value as? String ?? "").contains("failed"))
+        let phases = waitForPhases(app, matching: NSPredicate(format: "value ENDSWITH 'loaded'"))
+        XCTAssertFalse(phases.contains("failed"))
     }
 }

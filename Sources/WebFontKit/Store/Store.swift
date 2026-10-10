@@ -9,6 +9,7 @@ struct Store: Sendable {
     let directory: URL
     let files: any FileOperations
 
+    /// A file in the store the library named, by what it is.
     enum OwnedFile: Sendable, Equatable {
         case font(StoredFileName.Parsed, FileEntry)
         case marker(StoredFileName.Parsed, FileEntry)
@@ -57,7 +58,7 @@ struct Store: Sendable {
     }
 
     func url(for name: String) -> URL {
-        directory.appendingPathComponent(name)
+        directory.appending(component: name)
     }
 
     /// Renamed into place last, so a marker never exists without its attribute.
@@ -89,20 +90,20 @@ enum StoreLocation {
         if isSession {
             return sessionDirectory(root: root, pid: ProcessInfo.processInfo.processIdentifier)
         }
-        return (configured ?? root ?? defaultDirectory()).appendingPathComponent(subdirectory, isDirectory: true)
+        return (configured ?? root ?? defaultDirectory()).appending(component: subdirectory, directoryHint: .isDirectory)
     }
 
     static func sessionRoot(root: URL?) -> URL {
-        (root ?? FileManager.default.temporaryDirectory).appendingPathComponent(sessionFolder, isDirectory: true)
+        (root ?? URL.temporaryDirectory).appending(component: sessionFolder, directoryHint: .isDirectory)
     }
 
     static func sessionDirectory(root: URL?, pid: Int32) -> URL {
-        sessionRoot(root: root).appendingPathComponent(String(pid), isDirectory: true)
+        sessionRoot(root: root).appending(component: String(pid), directoryHint: .isDirectory)
     }
 
     /// On macOS Application Support is shared by every app, hence the per-app folder.
     static func defaultDirectory() -> URL {
-        let support = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
+        let support = URL.applicationSupportDirectory
         #if os(macOS)
         return macOSDirectory(applicationSupport: support, bundleIdentifier: Bundle.main.bundleIdentifier,
                               processName: ProcessInfo.processInfo.processName)
@@ -113,7 +114,7 @@ enum StoreLocation {
 
     static func macOSDirectory(applicationSupport: URL, bundleIdentifier: String?, processName: String) -> URL {
         let name = bundleIdentifier.flatMap { $0.isEmpty ? nil : $0 } ?? processName
-        return applicationSupport.appendingPathComponent(name, isDirectory: true)
+        return applicationSupport.appending(component: name, directoryHint: .isDirectory)
     }
 
     /// A folder with our own pid was left by an earlier process with that pid, so it is emptied.

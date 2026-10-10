@@ -13,8 +13,8 @@ struct PreviewRenderTests {
             (.neverAnswers, .system(.title, design: .serif)),
         ]
     )
-    func renders(behaviour: PreviewFontSource.Behavior, fallback: Font?) {
-        let renderer = ImageRenderer(content: WebFontPreviewContent(behaviour: behaviour, fallback: fallback))
+    func renders(behavior: PreviewFontSource.Behavior, fallback: Font?) {
+        let renderer = ImageRenderer(content: WebFontPreviewContent(behavior: behavior, fallback: fallback))
         let image = renderer.cgImage
         #expect(image != nil)
         #expect((image?.width ?? 0) > 0)

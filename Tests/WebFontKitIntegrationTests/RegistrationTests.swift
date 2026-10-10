@@ -21,7 +21,7 @@ extension IntegrationTests {
         }
 
         deinit {
-            // Synchronous: the batched call finishes later, during the next test.
+            // Unregister synchronously; the async call would land during the next test.
             for url in registered {
                 CTFontManagerUnregisterFontsForURL(url as CFURL, .process, nil)
             }
@@ -33,17 +33,11 @@ extension IntegrationTests {
             Registry(registrar: registrar, files: DiskFileOperations(), logSink: logSink)
         }
 
+        /// Stores a fixture and remembers it, so `deinit` unregisters it whatever the test did.
         func copy(_ fixture: String, family: String, style: FontStyle = .regular, into directory: URL? = nil) throws -> StoredFace {
-            let folder = directory ?? store.directory
-            try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
-            let key = "\(family)|\(style.weight)|\(style.isItalic ? "i" : "n")"
-            let url = folder.appendingPathComponent(StoredFileName.font(family: family, style: style, cacheKey: key, version: nil))
-            try Fixtures.data(fixture).write(to: url)
-            registered.append(url)
-            let info = CoreTextFonts.descriptorInfo(at: url)!
-            return StoredFace(key: FaceKey(family: family, style: style), url: url,
-                              keyHash: StoredFileName.keyHash(family: family, style: style, cacheKey: key),
-                              postScriptName: info.postScriptName, glyphCount: info.glyphCount, familyName: info.familyName)
+            let face = try Fixtures.storeFont(fixture, family: family, style: style, in: directory ?? store.directory)
+            registered.append(face.url)
+            return face
         }
 
         func resolvedFile(_ postScriptName: String) -> String? {
@@ -62,8 +56,8 @@ extension IntegrationTests {
         @Test("a second copy and another version of a face: 305 on iOS, registered on macOS")
         func duplicatedName() async throws {
             let first = try copy(Fixtures.lobster, family: "Lobster")
-            let duplicate = try copy(Fixtures.lobster, family: "Lobster", into: directory.url.appendingPathComponent("second"))
-            let older = try copy(Fixtures.lobsterV20, family: "Lobster", into: directory.url.appendingPathComponent("third"))
+            let duplicate = try copy(Fixtures.lobster, family: "Lobster", into: directory.url.appending(component: "second", directoryHint: .isDirectory))
+            let older = try copy(Fixtures.lobsterV20, family: "Lobster", into: directory.url.appending(component: "third", directoryHint: .isDirectory))
             #expect(await registrar.register(urls: [first.url]).isEmpty)
             #if os(iOS)
             #expect(await registrar.register(urls: [duplicate.url]) == [duplicate.url: CoreTextCode.duplicatedName])
@@ -79,7 +73,7 @@ extension IntegrationTests {
         func registryCheckFirst() async throws {
             let registry = registry()
             let first = try copy(Fixtures.lobster, family: "Lobster")
-            let second = try copy(Fixtures.lobsterV20, family: "lobster", into: directory.url.appendingPathComponent("second"))
+            let second = try copy(Fixtures.lobsterV20, family: "lobster", into: directory.url.appending(component: "second", directoryHint: .isDirectory))
             _ = await registry.register(first, epochs: nil, store: store)
             let result = await registry.register(second, epochs: nil, store: store)
             #expect(result == .added(RegistryEntry(postScriptName: "Lobster-Regular", kind: .file(url: second.url, keyHash: second.keyHash, registeredHere: false))))
@@ -93,13 +87,16 @@ extension IntegrationTests {
             let url = store.url(for: "Lato@400n@0000000000000000.wfkfont")
             try Fixtures.data("Corrupt/NotFound.ttf").write(to: url)
             let failures = await registrar.register(urls: [url])
+            // iOS reads the bytes and rejects them; macOS does not recognise the format at all.
             #if os(iOS)
-            #expect(failures == [url: 104])
+            #expect(failures == [url: CTFontManagerError.invalidFontData.rawValue])
             #else
-            #expect(failures == [url: 103])
+            #expect(failures == [url: CTFontManagerError.unrecognizedFormat.rawValue])
             #endif
         }
 
+        #if os(iOS)
+        // iOS only: macOS can drop the opened face under cache pressure and draw LastResort.
         @Test("a face opened once keeps drawing after its file is deleted")
         func deletedAfterOpen() async throws {
             let registry = registry()
@@ -108,15 +105,13 @@ extension IntegrationTests {
             let saved = try Data(contentsOf: face.url)
             try FileManager.default.removeItem(at: face.url)
 
-            #if os(iOS)
-            // iOS only: macOS can drop the opened face under cache pressure and draw LastResort.
             let font = CTFontCreateWithName("Lato-Bold" as CFString, 24, nil)
             #expect(CTFontGetGlyphCount(font) == 272)
-            #endif
 
             try saved.write(to: face.url)
             _ = try await registry.remove(family: nil, directories: [store.directory])
         }
+        #endif
 
         @Test("a file deleted before its open is .storage, and nothing stays registered")
         func deletedBeforeOpen() async throws {
@@ -145,7 +140,7 @@ extension IntegrationTests {
             let marker = store.url(for: "Noto%20Sans%20Kannada@400n@system.wfkmark")
             #expect(store.markerName(at: marker) == "NotoSansKannada-Regular")
             #expect(!(resolvedFile("NotoSansKannada-Regular") ?? "").hasPrefix(TempDirectory.runRoot.path))
-            #expect(logSink.entries.contains { $0.message.contains("Noto Sans Kannada") && $0.message.contains("305 mode") })
+            #expect(logSink.entries.contains { $0.message.contains("Noto Sans Kannada") && $0.message.contains("same PostScript name") })
             #expect(registry.checkMarker(at: marker, store: store) == .valid(postScriptName: "NotoSansKannada-Regular"))
         }
 
@@ -159,14 +154,14 @@ extension IntegrationTests {
             #expect(registry.entry(for: face.key)?.registeredHere == true, "\(result)")
             #expect(resolvedFile("BebasNeue-Regular") == face.url.resolvingSymlinksInPath().path)
             #expect(UIFont(name: "Bebas Neue", size: 24)?.fontName == "BebasNeue")
-            #expect(logSink.entries.contains { $0.message.contains("Bebas Neue") && $0.message.contains("silent mode") })
+            #expect(logSink.entries.contains { $0.message.contains("Bebas Neue") && $0.message.contains("another PostScript name") })
             _ = try await registry.remove(family: nil, directories: [store.directory])
         }
 
-        @Test("a marker's attribute survives its rename")
+        @Test("a marker's attribute and backup exclusion survive its rename, in an App Group container when there is one")
         func markerAttributeSurvivesRename() throws {
             let container = FileManager.default.containerURL(forSecurityApplicationGroupIdentifier: "group.com.webfontkit.tests")
-            let target = Store(directory: container?.appendingPathComponent("WebFontKit") ?? store.directory, files: DiskFileOperations())
+            let target = Store(directory: container?.appending(component: "WebFontKit") ?? store.directory, files: DiskFileOperations())
             try target.files.createDirectory(at: target.directory)
             try target.writeMarker(family: "Noto Sans Kannada", style: .regular, postScriptName: "NotoSansKannada-Regular")
             let marker = target.url(for: "Noto%20Sans%20Kannada@400n@system.wfkmark")
@@ -174,7 +169,6 @@ extension IntegrationTests {
             #expect(try Data(contentsOf: marker).isEmpty)
             #expect(target.markerName(at: marker) == "NotoSansKannada-Regular")
             #expect(try marker.resourceValues(forKeys: [.isExcludedFromBackupKey]).isExcludedFromBackup == true)
-            print("marker attribute check ran in \(container == nil ? "the test's temporary directory (no App Group container)" : "an App Group container")")
         }
 
         @MainActor

@@ -6,7 +6,7 @@ struct ExampleApp: App {
     private let mode: TestMode.Screen
 
     init() {
-        mode = TestMode.apply(ProcessInfo.processInfo.arguments)
+        mode = TestMode.apply()
         if case .showcase = mode {
             // Configure early, so saved fonts are registered before the first frame as often as possible.
             WebFonts.shared.configure(.init(storage: .persistent))

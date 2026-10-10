@@ -2,10 +2,9 @@
 
 import PackageDescription
 
-// No warning settings and no unsafe flags here: a local-path consumer inherits
-// manifest warning settings, and SwiftPM refuses a versioned dependency on a
-// package with unsafe flags. Our own builds treat warnings as errors from the
-// command line (scripts/check.sh).
+// No warning settings or unsafe flags: a path dependency inherits warning settings, and
+// SwiftPM rejects unsafeFlags in a versioned dependency. scripts/build.sh and CI treat
+// warnings as errors from the command line instead.
 let package = Package(
     name: "WebFontKit",
     platforms: [
@@ -38,6 +37,5 @@ let package = Package(
             name: "WebFontKitPerformanceTests",
             dependencies: ["WebFontKit", "WebFontKitTestSupport"]
         ),
-    ],
-    swiftLanguageModes: [.v6]
+    ]
 )

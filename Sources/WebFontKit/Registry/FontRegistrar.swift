@@ -50,46 +50,46 @@ enum CoreTextFonts {
     private static let serial = OSAllocatedUnfairLock()
 
     static func descriptorInfo(at url: URL) -> FaceInfo? {
-        serial.lock()
-        defer { serial.unlock() }
-        guard let descriptors = CTFontManagerCreateFontDescriptorsFromURL(url as CFURL) as? [CTFontDescriptor],
-              let first = descriptors.first
-        else { return nil }
-        let font = CTFontCreateWithFontDescriptor(first, 12, nil)
-        return FaceInfo(postScriptName: CTFontCopyPostScriptName(font) as String, glyphCount: CTFontGetGlyphCount(font),
-                        familyName: CTFontCopyFamilyName(font) as String)
+        serial.withLock {
+            guard let descriptors = CTFontManagerCreateFontDescriptorsFromURL(url as CFURL) as? [CTFontDescriptor],
+                  let first = descriptors.first
+            else { return nil }
+            let font = CTFontCreateWithFontDescriptor(first, 12, nil)
+            return FaceInfo(postScriptName: CTFontCopyPostScriptName(font) as String, glyphCount: CTFontGetGlyphCount(font),
+                            familyName: CTFontCopyFamilyName(font) as String)
+        }
     }
 
     static func openFace(postScriptName: String) -> (postScriptName: String, fileURL: URL?, glyphCount: Int) {
-        serial.lock()
-        defer { serial.unlock() }
-        let font = CTFontCreateWithName(postScriptName as CFString, 12, nil)
-        var glyph = CGGlyph(0)
-        var character = UniChar(0x41)
-        if !CTFontGetGlyphsForCharacters(font, &character, &glyph, 1) {
-            glyph = 0
+        serial.withLock {
+            let font = CTFontCreateWithName(postScriptName as CFString, 12, nil)
+            var glyph = CGGlyph(0)
+            var character = UniChar(0x41)
+            if !CTFontGetGlyphsForCharacters(font, &character, &glyph, 1) {
+                glyph = 0
+            }
+            _ = CTFontCreatePathForGlyph(font, glyph, nil)
+            return (
+                CTFontCopyPostScriptName(font) as String,
+                CTFontCopyAttribute(font, kCTFontURLAttribute) as? URL,
+                CTFontGetGlyphCount(font)
+            )
         }
-        _ = CTFontCreatePathForGlyph(font, glyph, nil)
-        return (
-            CTFontCopyPostScriptName(font) as String,
-            CTFontCopyAttribute(font, kCTFontURLAttribute) as? URL,
-            CTFontGetGlyphCount(font)
-        )
     }
 
     static func faceForFamily(_ family: String) -> (familyName: String, fileURL: URL?) {
-        serial.lock()
-        defer { serial.unlock() }
-        let font = CTFontCreateWithName(family as CFString, 12, nil)
-        return (CTFontCopyFamilyName(font) as String, CTFontCopyAttribute(font, kCTFontURLAttribute) as? URL)
+        serial.withLock {
+            let font = CTFontCreateWithName(family as CFString, 12, nil)
+            return (CTFontCopyFamilyName(font) as String, CTFontCopyAttribute(font, kCTFontURLAttribute) as? URL)
+        }
     }
 
     static func activeFace(postScriptName: String) -> (postScriptName: String, fileURL: URL?)? {
-        serial.lock()
-        defer { serial.unlock() }
-        let font = CTFontCreateWithName(postScriptName as CFString, 12, nil)
-        let resolved = CTFontCopyPostScriptName(font) as String
-        guard resolved == postScriptName else { return nil }
-        return (resolved, CTFontCopyAttribute(font, kCTFontURLAttribute) as? URL)
+        serial.withLock {
+            let font = CTFontCreateWithName(postScriptName as CFString, 12, nil)
+            let resolved = CTFontCopyPostScriptName(font) as String
+            guard resolved == postScriptName else { return nil }
+            return (resolved, CTFontCopyAttribute(font, kCTFontURLAttribute) as? URL)
+        }
     }
 }

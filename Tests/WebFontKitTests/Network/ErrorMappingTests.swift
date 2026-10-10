@@ -73,7 +73,7 @@ struct ErrorMappingTests {
         #expect(harness.leftovers.isEmpty)
     }
 
-    @Test("the mapping functions agree with DESIGN decision 19")
+    @Test("the mapping functions agree with the status and URL-error tables")
     func mappingTable() {
         #expect(ErrorMapping.map(URLError(.cannotFindHost)) == .offline)
         #expect(ErrorMapping.map(URLError(.cancelled)) == .network(.cancelled))

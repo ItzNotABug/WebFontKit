@@ -1,6 +1,7 @@
 import Foundation
 
 extension Registry {
+    /// A face warm-up is about to add to the table.
     struct WarmFace: Sendable, Equatable {
         var key: FaceKey
         var entry: RegistryEntry
@@ -41,9 +42,9 @@ extension Registry {
                 let opened = await registrar.openRegisteredFace(postScriptName: face.postScriptName)
                 // No silent-collision check here: it only logs, and the face's first commit already did.
                 if opened.postScriptName == face.postScriptName, let url = opened.fileURL, sameFile(face.url)(url),
-                   opened.glyphCount == face.glyphCount, files.fileExists(at: face.url) {
+                   opened.glyphCount == face.glyphCount, let file = try? files.fileEntry(at: face.url) {
                     warmed.append(WarmFace(key: face.key, entry: face.entry(registeredHere: true),
-                                           row: downloadedRow(for: face, postScriptName: face.postScriptName), counted: true))
+                                           row: downloadedRow(for: face, file: file), counted: true))
                     warmed += shared.map { unregisteredFace($0) }
                 } else if opened.postScriptName == face.postScriptName, let url = opened.fileURL, isAnotherInstancesFile(url, of: face) {
                     failedOpens.append(face.url)
@@ -52,12 +53,12 @@ extension Registry {
                     // Kept: a stored file passed validation, so this is CoreText lagging or another
                     // process's copy, and deleting it would lose a good font.
                     failedOpens.append(face.url)
-                    log("warmup", .error, "\(face.key) did not open as \(face.postScriptName); skipped", private: [face.url.path])
+                    log("warmup", .error, "\(face.key) did not open as \(face.postScriptName); skipped", private: [face.url.path(percentEncoded: false)])
                 }
             case CoreTextCode.duplicatedName?:
-                warmed += await unregisteredFaces([face] + shared, store: store, after305: true)
+                warmed += await unregisteredFaces([face] + shared, store: store, afterDuplicatedName: true)
             case let code?:
-                log("warmup", .error, "\(face.key) failed to register (CoreText error \(code)); skipped and kept", private: [face.url.path])
+                log("warmup", .error, "\(face.key) failed to register (CoreText error \(code)); skipped and kept", private: [face.url.path(percentEncoded: false)])
             }
         }
 
@@ -140,19 +141,19 @@ extension Registry {
 
     private func unregisteredFace(_ face: StoredFace) -> WarmFace {
         WarmFace(key: face.key, entry: face.entry(registeredHere: false),
-                 row: downloadedRow(for: face, postScriptName: face.postScriptName), counted: false)
+                 row: downloadedRow(for: face), counted: false)
     }
 
     /// A system font answering the name turns each face into a marker; anything else leaves an unregistered entry.
-    private func unregisteredFaces(_ faces: [StoredFace], store: Store, after305: Bool = false) async -> [WarmFace] {
+    private func unregisteredFaces(_ faces: [StoredFace], store: Store, afterDuplicatedName: Bool = false) async -> [WarmFace] {
         guard let first = faces.first else { return [] }
         let tableEntry = state.withLock { $0.entries(named: first.postScriptName).first?.entry }
         var system = tableEntry?.kind == .system
-        if after305, tableEntry == nil {
+        if afterDuplicatedName, tableEntry == nil {
             let active = registrar.activeFace(postScriptName: first.postScriptName)
             system = active.map { $0.fileURL?.pathExtension != StoredFileName.fontExtension } ?? false
             if !system {
-                log("warmup", .info, "305 for \(first.postScriptName): served by another WebFontKit file; kept unregistered here")
+                log("warmup", .info, "Another WebFontKit file already serves \(first.postScriptName); kept unregistered here")
             }
         }
         guard system else { return faces.map(unregisteredFace) }
@@ -164,7 +165,7 @@ extension Registry {
             } catch {
                 log("warmup", .error, "Could not replace the stored \(face.key) with its system-collision marker")
             }
-            log("warmup", .info, "\(face.key) is also a system font (305 mode): drawing the system's \(face.postScriptName)")
+            log("warmup", .info, "\(face.key) is also a system font with the same PostScript name: drawing the system's \(face.postScriptName)")
             warmed.append(WarmFace(key: face.key, entry: RegistryEntry(postScriptName: face.postScriptName, kind: .system), row: nil, counted: false))
         }
         return warmed

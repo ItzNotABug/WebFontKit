@@ -52,12 +52,12 @@ extension WebFonts {
             }
             let found = try await registry.faceTurns.with(key) { () async throws -> Bool in
                 guard !missing([style], family: family, snapshot: snapshot).isEmpty else { return true }
-                let fonts = owned.compactMap { file -> FileEntry? in
+                let newest = owned.compactMap { file -> FileEntry? in
                     guard case .font(let parsed, let entry) = file, parsed.family == family, parsed.style == style,
                           case .font(hash, _) = parsed.kind else { return nil }
                     return entry
-                }.sorted { $0.modificationDate > $1.modificationDate }
-                if let file = fonts.first, files.fileExists(at: file.url), let info = registry.registrar.faceInfo(at: file.url) {
+                }.max { $0.modificationDate < $1.modificationDate }
+                if let file = newest, let info = registry.registrar.faceInfo(at: file.url) {
                     // Another process may have stored it under a newer cache key than our entry's.
                     let face = StoredFace(key: key, url: file.url, keyHash: hash, info: info, file: file)
                     switch await registry.registerReplacingStale(face, epochs: epochs, store: store) {

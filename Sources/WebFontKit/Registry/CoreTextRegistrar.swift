@@ -3,6 +3,7 @@ import Foundation
 
 /// The real registrar: process-scope registration from files.
 struct CoreTextRegistrar: FontRegistrar {
+    /// One CoreText error code and the files it applies to.
     struct Failure: Sendable {
         var code: Int
         var urls: [URL]
@@ -14,7 +15,7 @@ struct CoreTextRegistrar: FontRegistrar {
         _ handler: @escaping @Sendable (_ failures: [Failure], _ done: Bool) -> Void
     ) -> Void
 
-    var registerCall: BatchCall = { urls, handler in
+    private static let registerAll: BatchCall = { urls, handler in
         CTFontManagerRegisterFontURLs(urls as CFArray, .process, true) { errors, done in
             handler(Self.failures(errors), done)
             return true
@@ -29,7 +30,7 @@ struct CoreTextRegistrar: FontRegistrar {
     }
 
     func register(urls: [URL]) async -> [URL: Int] {
-        await Self.bridge(urls, registerCall)
+        await Self.bridge(urls, Self.registerAll)
     }
 
     func unregister(urls: [URL]) async -> [URL: Int] {
@@ -59,14 +60,14 @@ struct CoreTextRegistrar: FontRegistrar {
     /// Resumes exactly once, on `done`; failures keyed by the caller's own URL spelling.
     static func bridge(_ urls: [URL], _ call: BatchCall) async -> [URL: Int] {
         guard !urls.isEmpty else { return [:] }
-        let byPath = Dictionary(urls.map { ($0.resolvingSymlinksInPath().path, $0) }, uniquingKeysWith: { first, _ in first })
+        let byPath = Dictionary(urls.map { ($0.resolvingSymlinksInPath().path(percentEncoded: false), $0) }, uniquingKeysWith: { first, _ in first })
         let collected = Locked((failures: [URL: Int](), resumed: false))
         return await withCheckedContinuation { continuation in
             call(urls) { failures, done in
                 let finished = collected.withLock { state -> [URL: Int]? in
                     for failure in failures {
                         for url in failure.urls {
-                            let own = byPath[url.resolvingSymlinksInPath().path] ?? url
+                            let own = byPath[url.resolvingSymlinksInPath().path(percentEncoded: false)] ?? url
                             state.failures[own] = failure.code
                         }
                     }

@@ -1,3 +1,4 @@
+#if DEBUG
 import Foundation
 import os
 
@@ -13,10 +14,6 @@ public final class AsyncLatch: Sendable {
     private let state = OSAllocatedUnfairLock(initialState: State())
 
     public init() {}
-
-    public var isOpen: Bool {
-        state.withLock { $0.isOpen }
-    }
 
     public func open() {
         let waiters = state.withLock { state -> [CheckedContinuation<Void, any Error>] in
@@ -108,3 +105,4 @@ public final class AsyncRecorder<Element: Sendable>: Sendable {
         }
     }
 }
+#endif

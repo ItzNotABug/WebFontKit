@@ -6,6 +6,10 @@
 /// ```
 public struct FontLoadResults: Sequence, Sendable {
     /// One family and how its load ended.
+    ///
+    /// ```swift
+    /// for (family, result) in results where (try? result.get()) == nil { print("retry", family) }
+    /// ```
     public typealias Element = (family: String, result: Result<Void, WebFontError>)
 
     private let entries: [Element]

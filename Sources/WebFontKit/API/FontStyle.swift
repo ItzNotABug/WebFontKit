@@ -19,7 +19,7 @@ public struct FontStyle: Hashable, Sendable {
     /// ```
     public let isItalic: Bool
 
-    /// The weight must be a multiple of 100 from 100 to 900; anything else is a programming error.
+    /// Creates a style. The weight must be a multiple of 100 from 100 to 900; any other traps.
     ///
     /// ```swift
     /// let lightItalic = FontStyle(weight: 300, italic: true)
@@ -81,7 +81,7 @@ public struct FontStyle: Hashable, Sendable {
 /// }
 /// ```
 public struct FontRequest: Hashable, Sendable {
-    /// Passed through unchanged: names are case-sensitive.
+    /// The family name, exactly as passed to `load`; names are case-sensitive.
     ///
     /// ```swift
     /// FontRequest(family: "Bebas Neue").family // "Bebas Neue"

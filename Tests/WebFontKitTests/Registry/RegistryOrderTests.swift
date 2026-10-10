@@ -56,7 +56,8 @@ struct RegistryOrderTests {
         let harness = Harness()
         let registry = harness.makeRegistry()
         let face = try harness.storeFont(Fixtures.lobster, family: "Lobster")
-        let other = TempDirectory().url.appendingPathComponent("Lobster@400n@0000000000000000.wfkfont")
+        let otherInstance = TempDirectory()
+        let other = otherInstance.url.appending(component: "Lobster@400n@0000000000000000.wfkfont")
         harness.registrar.scriptRegister(face.url, code: 305)
         harness.registrar.scriptActiveFace("Lobster-Regular", answer: ("Lobster-Regular", other))
 
@@ -67,6 +68,7 @@ struct RegistryOrderTests {
         #expect(FileManager.default.fileExists(atPath: face.url.path))
         #expect(!harness.directory.fileNames().contains { $0.hasSuffix(".wfkmark") })
         #expect(registry.downloaded.count == 1)
+        withExtendedLifetime(otherInstance) {}
     }
 
     @Test("a 305 for a system font keeps a system-collision entry and a marker, and deletes the file")
@@ -141,12 +143,12 @@ struct RegistryOrderTests {
     }
 
     @Test("the marker path's insert step records nothing on changed epochs")
-    func systemEntryInsert() async {
+    func systemEntryInsert() async throws {
         let harness = Harness()
         let registry = harness.makeRegistry()
         let key = FaceKey(family: "Noto Sans Kannada", style: .regular)
         let recorded = registry.epochs(for: key.family)
-        _ = try? await registry.remove(family: nil, directories: [])
+        _ = try await registry.remove(family: nil, directories: [])
         #expect(!(await registry.insertSystemEntry(for: key, postScriptName: "NotoSansKannada-Regular", epochs: recorded)))
         #expect(await registry.insertSystemEntry(for: key, postScriptName: "NotoSansKannada-Regular", epochs: registry.epochs(for: key.family)))
         #expect(registry.postScriptName(for: key) == "NotoSansKannada-Regular")

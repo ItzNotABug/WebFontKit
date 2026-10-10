@@ -20,14 +20,14 @@ final class ModifierModel {
 @MainActor
 struct ModifierHarness {
     let fonts: WebFonts
-    let model = ModifierModel()
+    let model: ModifierModel
     let choices = AsyncRecorder<FontChoice>()
     let phases = AsyncRecorder<WebFontPhase>()
     let renderer: ImageRenderer<AnyView>
 
-    init(fonts: WebFonts, fallback: Font? = nil) {
+    init(fonts: WebFonts, model: ModifierModel = ModifierModel(), fallback: Font? = nil) {
         self.fonts = fonts
-        let model = model
+        self.model = model
         let choices = choices
         let phases = phases
         renderer = ImageRenderer(content: AnyView(
@@ -45,6 +45,11 @@ struct ModifierHarness {
 
     func render() {
         _ = renderer.cgImage
+    }
+
+    /// Every phase so far, once `count` of them are `.loaded` or `.failed`.
+    func settledPhases(count: Int = 1) async throws -> [WebFontPhase] {
+        try await phases.wait { $0.count { $0 != .loading } >= count }
     }
 }
 
@@ -68,13 +73,13 @@ struct ModifierTests {
     @Test("a registered font draws on the first body, and no fallback is ever recorded")
     func firstFrame() async throws {
         let harness = Harness()
-        harness.serveGoogle()
+        harness.server.serveGoogle()
         let fonts = harness.makeFonts()
         try await harness.warmUp(fonts)
         try await fonts.load("Lobster")
 
         let view = ModifierHarness(fonts: fonts)
-        try await view.phases.wait { $0 == [.loaded] }
+        #expect(try await view.settledPhases() == [.loaded])
         view.render()
         #expect(view.choices.elements.first == .postScriptName("Lobster-Regular"))
         #expect(!view.choices.elements.contains { if case .fallback = $0 { true } else { false } })
@@ -83,7 +88,7 @@ struct ModifierTests {
     @Test("not registered: the fallback first, then the PostScript name once loaded, with .loading then .loaded")
     func swap() async throws {
         let harness = Harness()
-        harness.serveGoogle(holdFiles: true)
+        harness.server.serveGoogle(holdFiles: true)
         let fonts = harness.makeFonts()
         try await harness.warmUp(fonts)
 
@@ -91,7 +96,7 @@ struct ModifierTests {
         #expect(view.choices.elements.first == .fallback(.system(size: 19, weight: .regular)))
         try await harness.server.waitForRequests { harness.isFontFile($0) }
         harness.server.releaseAll()
-        try await view.phases.wait { $0 == [.loading, .loaded] }
+        #expect(try await view.settledPhases() == [.loading, .loaded])
         view.render()
         try await view.choices.wait { $0.last == .postScriptName("Lobster-Regular") }
     }
@@ -99,26 +104,32 @@ struct ModifierTests {
     @Test("the default fallback matches weight and italic")
     func defaultFallback() async throws {
         let harness = Harness()
-        harness.serveGoogle(holdFiles: true)
+        harness.server.serveGoogle(holdFiles: true)
         let fonts = harness.makeFonts()
         try await harness.warmUp(fonts)
-        let view = ModifierHarness(fonts: fonts)
-        view.model.weight = .bold
-        view.model.italic = true
-        view.render()
-        try await view.choices.wait { $0.last == .fallback(.system(size: 19, weight: .bold).italic()) }
+        let model = ModifierModel()
+        model.weight = .bold
+        model.italic = true
+        let view = ModifierHarness(fonts: fonts, model: model)
+        #expect(view.choices.elements.first == .fallback(.system(size: 19, weight: .bold).italic()))
+
+        // Lobster has no bold italic, so the regular face is fetched and drawn in its place.
+        try await harness.server.waitForRequests { harness.isFontFile($0) }
         harness.server.releaseAll()
+        #expect(try await view.settledPhases() == [.loading, .loaded])
     }
 
     @Test("a caller's fallback is drawn instead")
     func customFallback() async throws {
         let harness = Harness()
-        harness.serveGoogle(holdFiles: true)
+        harness.server.serveGoogle(holdFiles: true)
         let fonts = harness.makeFonts()
         try await harness.warmUp(fonts)
         let view = ModifierHarness(fonts: fonts, fallback: .title)
         #expect(view.choices.elements.first == .fallback(.title))
+        try await harness.server.waitForRequests { harness.isFontFile($0) }
         harness.server.releaseAll()
+        #expect(try await view.settledPhases() == [.loading, .loaded])
     }
 
     @Test(
@@ -137,7 +148,7 @@ struct ModifierTests {
         let fonts = harness.makeFonts()
         try await harness.warmUp(fonts)
         let view = ModifierHarness(fonts: fonts)
-        try await view.phases.wait { $0 == [.loading, .failed(.offline)] }
+        #expect(try await view.settledPhases() == [.loading, .failed(.offline)])
     }
 
     @Test("a name the source rejects fails once, without trying its regular face")
@@ -156,7 +167,7 @@ struct ModifierTests {
     @Test("a style the family lacks draws the regular face, reports .loaded, and a second view draws it at once")
     func styleFallback() async throws {
         let harness = Harness()
-        harness.serveGoogle()
+        harness.server.serveGoogle()
         let fonts = harness.makeFonts()
         try await harness.warmUp(fonts)
         let first = ModifierHarness(fonts: fonts)
@@ -180,16 +191,19 @@ struct ModifierTests {
     @Test("changing only the size never reloads")
     func sizeChange() async throws {
         let harness = Harness()
-        harness.serveGoogle()
+        harness.server.serveGoogle()
         let fonts = harness.makeFonts()
         try await harness.warmUp(fonts)
         let view = ModifierHarness(fonts: fonts)
-        try await view.phases.wait { $0 == [.loading, .loaded] }
-        let requests = harness.server.requests.count
+        #expect(try await view.settledPhases() == [.loading, .loaded])
         view.model.size = 40
         view.render()
-        #expect(harness.server.requests.count == requests)
-        #expect(view.phases.elements == [.loading, .loaded])
+
+        // A reload from the size change would land before the second family's phases.
+        view.model.family = "Inter"
+        view.render()
+        #expect(try await view.settledPhases(count: 2) == [.loading, .loaded, .loading, .loaded])
+        #expect(harness.css2Requests(for: "Lobster") == 1)
     }
 
     @Test("the modifier can be called from nonisolated code")

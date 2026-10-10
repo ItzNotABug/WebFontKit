@@ -1,11 +1,12 @@
+#if DEBUG
 import Foundation
 import os
 @testable import WebFontKit
 
 /// The real disk, with every call recorded and failures injectable.
 public final class FakeFileOperations: FileOperations, Sendable {
-    public enum Operation: String, Sendable, CaseIterable {
-        case createDirectory, contentsOfDirectory, removeDirectory, fileExists, write, rename, delete
+    public enum Operation: String, Sendable {
+        case createDirectory, contentsOfDirectory, removeDirectory, fileExists, fileEntry, write, rename, delete
         case setExcludedFromBackup, createPartial, append, close
         case setExtendedAttribute, extendedAttribute
     }
@@ -28,11 +29,12 @@ public final class FakeFileOperations: FileOperations, Sendable {
     private struct State {
         var calls: [Call] = []
         var failures: [Failure] = []
-        var dropsExtendedAttributes = false
     }
 
     private let disk = DiskFileOperations()
     private let state = OSAllocatedUnfairLock(initialState: State())
+    /// The size of each append, recorded once it is on disk.
+    public let appendedBytes = AsyncRecorder<Int>()
 
     public init() {}
 
@@ -57,13 +59,8 @@ public final class FakeFileOperations: FileOperations, Sendable {
         }
     }
 
-    /// When true, `setExtendedAttribute` succeeds without writing, leaving a marker with no attribute.
-    public func dropExtendedAttributes(_ drop: Bool = true) {
-        state.withLock { $0.dropsExtendedAttributes = drop }
-    }
-
     private func record(_ operation: Operation, _ url: URL?, destination: URL? = nil) throws {
-        let call = Call(operation: operation, url: url, destination: destination, onMainThread: pthread_main_np() != 0)
+        let call = Call(operation: operation, url: url, destination: destination, onMainThread: Thread.isMainThread)
         let error = state.withLock { state -> (any Error)? in
             state.calls.append(call)
             guard let index = state.failures.firstIndex(where: { $0.operation == operation && $0.matches(url) }) else {
@@ -95,6 +92,11 @@ public final class FakeFileOperations: FileOperations, Sendable {
     public func removeDirectory(at url: URL) throws {
         try record(.removeDirectory, url)
         try disk.removeDirectory(at: url)
+    }
+
+    public func fileEntry(at url: URL) throws -> FileEntry? {
+        try record(.fileEntry, url)
+        return try disk.fileEntry(at: url)
     }
 
     public func fileExists(at url: URL) -> Bool {
@@ -130,6 +132,7 @@ public final class FakeFileOperations: FileOperations, Sendable {
     public func append(_ data: Data, to handle: FileHandle) throws {
         try record(.append, nil)
         try disk.append(data, to: handle)
+        appendedBytes.append(data.count)
     }
 
     public func close(_ handle: FileHandle) throws {
@@ -139,7 +142,6 @@ public final class FakeFileOperations: FileOperations, Sendable {
 
     public func setExtendedAttribute(_ name: String, value: Data, at url: URL) throws {
         try record(.setExtendedAttribute, url)
-        if state.withLock({ $0.dropsExtendedAttributes }) { return }
         try disk.setExtendedAttribute(name, value: value, at: url)
     }
 
@@ -148,3 +150,4 @@ public final class FakeFileOperations: FileOperations, Sendable {
         return try disk.extendedAttribute(name, at: url)
     }
 }
+#endif

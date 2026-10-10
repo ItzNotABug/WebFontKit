@@ -14,14 +14,16 @@ enum TestMode {
 
     /// The Perf families the race loads; their files are bundled under `Perf/`.
     static var perfFamilies: [String] {
-        ExampleStub.bundledFamilies.filter { $0.value.hasPrefix("Perf/") }.keys.sorted()
+        ExampleStub.bundledFamilies.keys.sorted()
     }
 
-    static func apply(_ arguments: [String]) -> Screen {
-        let directory = value(after: "-WebFontKitDirectory", in: arguments)
+    static func apply() -> Screen {
+        // Values come from the arguments domain; flags without a value aren't in it.
+        let arguments = ProcessInfo.processInfo.arguments
+        let directory = UserDefaults.standard.string(forKey: "WebFontKitDirectory")
         let stub = arguments.contains("-WebFontKitStub")
         let offline = arguments.contains("-WebFontKitStubOffline")
-        let seed = value(after: "-WebFontKitSeed", in: arguments)
+        let seed = UserDefaults.standard.string(forKey: "WebFontKitSeed")
         let seedAll = arguments.contains("-WebFontKitSeedAll")
         let race = arguments.contains("-WebFontKitRace")
 
@@ -42,7 +44,7 @@ enum TestMode {
         }
         WebFonts.shared.configure(.init(
             storage: .persistent,
-            directory: FileManager.default.temporaryDirectory.appendingPathComponent(directory),
+            directory: URL.temporaryDirectory.appending(component: directory),
             session: session
         ))
 
@@ -68,23 +70,21 @@ enum TestMode {
             return .seeding
         }
         if race {
-            return .race(family: perfFamilies.first ?? "Pacifico")
+            guard let family = perfFamilies.first else {
+                preconditionFailure("No Perf fonts in the bundle: the race needs Tests/Fixtures/Perf")
+            }
+            return .race(family: family)
         }
         return .harness
     }
 
     static var raceFile: URL {
-        FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)[0].appendingPathComponent("race.txt")
+        URL.documentsDirectory.appending(component: "race.txt")
     }
 
     static func appendRaceLine(_ line: String) {
         let existing = (try? String(contentsOf: raceFile, encoding: .utf8)) ?? ""
         try? (existing + line + "\n").write(to: raceFile, atomically: true, encoding: .utf8)
-    }
-
-    private static func value(after flag: String, in arguments: [String]) -> String? {
-        guard let index = arguments.firstIndex(of: flag), index + 1 < arguments.count else { return nil }
-        return arguments[index + 1]
     }
 }
 
@@ -95,15 +95,13 @@ final class ExampleStub: URLProtocol {
 
     /// Family name → bundled regular face, e.g. "Abril Fatface" → "Perf/AbrilFatface-Regular.ttf".
     static let bundledFamilies: [String: String] = {
+        guard let url = Bundle.main.url(forResource: "Perf", withExtension: nil),
+              let names = try? FileManager.default.contentsOfDirectory(atPath: url.path) else { return [:] }
         var families: [String: String] = [:]
-        for folder in ["Fonts", "Perf"] {
-            guard let url = Bundle.main.url(forResource: folder, withExtension: nil),
-                  let names = try? FileManager.default.contentsOfDirectory(atPath: url.path) else { continue }
-            for name in names where name.hasSuffix("-Regular.ttf") {
-                let compact = String(name.dropLast("-Regular.ttf".count))
-                let family = compact.replacingOccurrences(of: "([a-z])([A-Z])", with: "$1 $2", options: .regularExpression)
-                families[family] = "\(folder)/\(name)"
-            }
+        for name in names where name.hasSuffix("-Regular.ttf") {
+            let compact = String(name.dropLast("-Regular.ttf".count))
+            let family = compact.replacingOccurrences(of: "([a-z])([A-Z])", with: "$1 $2", options: .regularExpression)
+            families[family] = "Perf/\(name)"
         }
         return families
     }()

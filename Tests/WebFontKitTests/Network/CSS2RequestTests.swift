@@ -68,7 +68,7 @@ struct CSS2RequestTests {
     @Test("the vNN version is read from a gstatic URL")
     func version() {
         #expect(CSS2.version(of: URL(string: "https://fonts.gstatic.com/s/lobster/v32/neILzCirqoswsqX9_oU.ttf")!) == "v32")
-        #expect(CSS2.version(of: URL(string: "https://cdn.example.com/fonts/Lobster.ttf")!) == nil)
-        #expect(CSS2.version(of: URL(string: "https://cdn.example.com/v/Lobster.ttf")!) == nil)
+        #expect(CSS2.version(of: URL(string: "https://cdn.example.test/fonts/Lobster.ttf")!) == nil)
+        #expect(CSS2.version(of: URL(string: "https://cdn.example.test/v/Lobster.ttf")!) == nil)
     }
 }

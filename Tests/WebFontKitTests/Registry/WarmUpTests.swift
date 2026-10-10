@@ -5,7 +5,7 @@ import WebFontKitTestSupport
 
 @Suite(.timeLimit(.minutes(1)))
 @MainActor
-struct WarmUpUnitTests {
+struct WarmUpTests {
     @Test("a relaunch registers every stored face in one call, off the main thread, from the file names alone")
     func relaunch() async throws {
         let harness = Harness()

@@ -18,7 +18,6 @@ struct CSSParserTests {
     @Test("every captured answer parses to its faces")
     func capturedFixtures() {
         #expect(summary(Fixtures.css2Text("lobster")) == ["normal 400 \(gstatic("lobster/v32/neILzCirqoswsqX9_oU"))"])
-        #expect(summary(Fixtures.css2Text("lobster-partial")) == ["normal 400 \(gstatic("lobster/v32/neILzCirqoswsqX9_oU"))"])
         #expect(summary(Fixtures.css2Text("noto-sans-jp")).count == 1)
         #expect(summary(Fixtures.css2Text("material-symbols-outlined")).count == 1)
         #expect(summary(Fixtures.css2Text("nabla")).count == 1)
@@ -81,7 +80,8 @@ struct CSSParserTests {
 
     @Test("a partial answer leaves the missing style out")
     func partialAnswer() throws {
-        let urls = try CSS2.urls(for: [.regular, .bold], in: CSS2.faces(in: Fixtures.css2Text("lobster-partial")))
+        // Google answers `Lobster:wght@400;700` with the regular face alone, byte for byte the plain capture.
+        let urls = try CSS2.urls(for: [.regular, .bold], in: CSS2.faces(in: Fixtures.css2Text("lobster")))
         #expect(Array(urls.keys) == [.regular])
     }
 

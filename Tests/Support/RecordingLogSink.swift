@@ -1,3 +1,4 @@
+#if DEBUG
 import OSLog
 @testable import WebFontKit
 
@@ -42,3 +43,4 @@ public final class RecordingLogSink: LogSink, Sendable {
         entries.filter(\.lockHeld)
     }
 }
+#endif

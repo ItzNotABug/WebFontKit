@@ -34,11 +34,6 @@ extension FileOperations {
     func contentsOfDirectory(at url: URL) throws -> [FileEntry] {
         try contentsOfDirectory(at: url, includingDirectories: false)
     }
-
-    /// Finds the file in its directory's listing; the disk reads the one file instead.
-    func fileEntry(at url: URL) throws -> FileEntry? {
-        try contentsOfDirectory(at: url.deletingLastPathComponent()).first { sameFile(url)($0.url) }
-    }
 }
 
 /// The real disk.
@@ -50,6 +45,9 @@ struct DiskFileOperations: FileOperations {
 
     func fileEntry(at url: URL) throws -> FileEntry? {
         dispatchPrecondition(condition: .notOnQueue(.main))
+        // A listing's URLs carry cached values, which can outlive a file another process deleted.
+        var url = url
+        url.removeAllCachedResourceValues()
         let values = try url.resourceValues(forKeys: [.isRegularFileKey, .contentModificationDateKey, .fileSizeKey])
         guard values.isRegularFile == true else { return nil }
         return FileEntry(url: url, modificationDate: values.contentModificationDate ?? .distantPast, byteCount: values.fileSize ?? 0)
@@ -75,14 +73,14 @@ struct DiskFileOperations: FileOperations {
 
     func removeDirectory(at url: URL) throws {
         dispatchPrecondition(condition: .notOnQueue(.main))
-        guard rmdir(url.path) == 0 else {
+        guard url.withUnsafeFileSystemRepresentation({ rmdir($0) }) == 0 else {
             throw POSIXError(POSIXErrorCode(rawValue: errno) ?? .EIO)
         }
     }
 
     func fileExists(at url: URL) -> Bool {
         dispatchPrecondition(condition: .notOnQueue(.main))
-        return FileManager.default.fileExists(atPath: url.path)
+        return FileManager.default.fileExists(atPath: url.path(percentEncoded: false))
     }
 
     func write(_ data: Data, to url: URL) throws {
@@ -92,14 +90,17 @@ struct DiskFileOperations: FileOperations {
 
     func rename(_ source: URL, to destination: URL) throws {
         dispatchPrecondition(condition: .notOnQueue(.main))
-        guard Darwin.rename(source.path, destination.path) == 0 else {
+        let result = source.withUnsafeFileSystemRepresentation { from in
+            destination.withUnsafeFileSystemRepresentation { to in Darwin.rename(from, to) }
+        }
+        guard result == 0 else {
             throw POSIXError(POSIXErrorCode(rawValue: errno) ?? .EIO)
         }
     }
 
     func delete(at url: URL) throws -> Bool {
         dispatchPrecondition(condition: .notOnQueue(.main))
-        guard unlink(url.path) == 0 else {
+        guard url.withUnsafeFileSystemRepresentation({ unlink($0) }) == 0 else {
             if errno == ENOENT { return false }
             throw POSIXError(POSIXErrorCode(rawValue: errno) ?? .EIO)
         }
@@ -116,8 +117,8 @@ struct DiskFileOperations: FileOperations {
 
     func createPartial(at url: URL) throws -> FileHandle {
         dispatchPrecondition(condition: .notOnQueue(.main))
-        guard FileManager.default.createFile(atPath: url.path, contents: nil) else {
-            throw CocoaError(.fileWriteUnknown, userInfo: [NSFilePathErrorKey: url.path])
+        guard FileManager.default.createFile(atPath: url.path(percentEncoded: false), contents: nil) else {
+            throw CocoaError(.fileWriteUnknown, userInfo: [NSURLErrorKey: url])
         }
         return try FileHandle(forWritingTo: url)
     }
@@ -134,8 +135,8 @@ struct DiskFileOperations: FileOperations {
 
     func setExtendedAttribute(_ name: String, value: Data, at url: URL) throws {
         dispatchPrecondition(condition: .notOnQueue(.main))
-        let result = value.withUnsafeBytes { bytes in
-            setxattr(url.path, name, bytes.baseAddress, bytes.count, 0, 0)
+        let result = url.withUnsafeFileSystemRepresentation { path in
+            value.withUnsafeBytes { bytes in setxattr(path, name, bytes.baseAddress, bytes.count, 0, 0) }
         }
         guard result == 0 else {
             throw POSIXError(POSIXErrorCode(rawValue: errno) ?? .EIO)
@@ -144,14 +145,14 @@ struct DiskFileOperations: FileOperations {
 
     func extendedAttribute(_ name: String, at url: URL) throws -> Data? {
         dispatchPrecondition(condition: .notOnQueue(.main))
-        let size = getxattr(url.path, name, nil, 0, 0, 0)
+        let size = url.withUnsafeFileSystemRepresentation { getxattr($0, name, nil, 0, 0, 0) }
         guard size >= 0 else {
             if errno == ENOATTR { return nil }
             throw POSIXError(POSIXErrorCode(rawValue: errno) ?? .EIO)
         }
         var data = Data(count: size)
-        let read = data.withUnsafeMutableBytes { bytes in
-            getxattr(url.path, name, bytes.baseAddress, size, 0, 0)
+        let read = url.withUnsafeFileSystemRepresentation { path in
+            data.withUnsafeMutableBytes { bytes in getxattr(path, name, bytes.baseAddress, size, 0, 0) }
         }
         guard read >= 0 else {
             throw POSIXError(POSIXErrorCode(rawValue: errno) ?? .EIO)

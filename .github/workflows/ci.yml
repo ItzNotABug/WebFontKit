@@ -3,9 +3,9 @@ name: CI
 on:
   push:
     branches: [main]
-    paths-ignore: [README.md, LICENSE, .gitignore, "Example/**", "Sources/WebFontKit/WebFontKit.docc/**"]
+    paths-ignore: [README.md, LICENSE, .gitignore, "Example/**", "Sources/WebFontKit/WebFontKit.docc/**", scripts/build.sh, scripts/verify.sh]
   pull_request:
-    paths-ignore: [README.md, LICENSE, .gitignore, "Example/**", "Sources/WebFontKit/WebFontKit.docc/**"]
+    paths-ignore: [README.md, LICENSE, .gitignore, "Example/**", "Sources/WebFontKit/WebFontKit.docc/**", scripts/build.sh, scripts/verify.sh]
   workflow_dispatch:
 
 permissions:
@@ -31,9 +31,8 @@ jobs:
   test:
     name: ${{ matrix.name }}
     runs-on: macos-26
-    timeout-minutes: 20
+    timeout-minutes: 15
     strategy:
-      fail-fast: true
       matrix:
         include:
           - name: Test
@@ -42,23 +41,25 @@ jobs:
           - name: Concurrency
             flags: -Xswiftc -enable-upcoming-feature -Xswiftc NonisolatedNonsendingByDefault
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v7
 
       - name: No unsafeFlags in Package.swift
-        run: "! grep -n unsafeFlags Package.swift"
+        run: |
+          manifest=$(swift package dump-package)
+          ! grep -q unsafeFlags <<< "$manifest"
 
       # One SwiftPM invocation builds and tests; any warning fails it.
       - name: Build and test, zero warnings
         run: |
           source scripts/common.sh
-          swiftpm_no_warnings test with_timeout 900 swift test --parallel --skip WebFontKitPerformanceTests \
+          swiftpm_no_warnings test with_timeout 600 swift test --skip WebFontKitPerformanceTests \
             -Xswiftc -warnings-as-errors ${{ matrix.flags }}
 
       - name: Upload logs
         if: failure()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
-          name: logs-${{ strategy.job-index }}
-          path: .build/gates
+          name: logs-${{ matrix.name }}
+          path: .build/logs
           include-hidden-files: true
           if-no-files-found: ignore

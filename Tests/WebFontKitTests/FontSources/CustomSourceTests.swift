@@ -28,7 +28,7 @@ struct CustomSourceTests {
     @Test("a non-https request is refused before anything is requested")
     func remoteNotHTTPS() async throws {
         let harness = Harness()
-        let source = TestRemoteSource(base: "http://fonts.example.test/")
+        let source = TestRemoteSource(base: URL(string: "http://fonts.example.test")!)
         await #expect(throws: WebFontError.invalidFont) {
             try await harness.fetcher.fetchCustom(FontRequest(family: "Lobster"), from: source)
         }
@@ -56,22 +56,51 @@ struct CustomSourceTests {
         #expect(harness.leftovers.isEmpty)
     }
 
-    @Test("the remote source's default fetch cancels an over-cap body while the stub holds it")
-    func remoteFetchHelperCap() async throws {
+    @Test("a remote source's public fetch refuses a file that declares more than the library's cap")
+    func remoteFetchDeclaredOverCap() async throws {
         let harness = Harness()
         let source = OnlyRequestSource()
-        var response = StubResponse.font(
-            Harness.markedBody(count: Downloader.sizeCap + 2 * 1024 * 1024, marker: UUID().uuidString),
-            hold: .afterBytes(Downloader.sizeCap + 1024 * 1024)
-        )
-        response.chunkSize = 1024 * 1024
+        var response = StubResponse.font(Fixtures.data(Fixtures.lobster))
+        response.headers["Content-Length"] = String(Downloader.sizeCap + 1)
         harness.server.respond(to: source.url, with: response)
 
         await #expect(throws: WebFontError.invalidFont) {
             try await source.fetch(request: FontRequest(family: "Lobster"), session: harness.session)
         }
+    }
+
+    @Test("a remote source's download over the fetcher's cap is cancelled while the stub holds the rest, leaving nothing")
+    func remoteDownloadCap() async throws {
+        let harness = Harness()
+        let source = OnlyRequestSource()
+        let megabyte = 1024 * 1024
+        var response = StubResponse.font(Harness.markedBody(count: 3 * megabyte, marker: UUID().uuidString), hold: .afterBytes(2 * megabyte))
+        response.chunkSize = 256 * 1024
+        harness.server.respond(to: source.url, with: response)
+        let fetcher = harness.fetcher(sizeCap: megabyte)
+
+        await #expect(throws: WebFontError.invalidFont) {
+            try await fetcher.fetchCustom(FontRequest(family: "Lobster"), from: source)
+        }
         try await harness.server.waitForCancel(of: source.url.absoluteString)
         harness.server.releaseAll()
+        #expect(harness.leftovers.isEmpty)
+    }
+
+    @Test("a source's bytes over the fetcher's cap are .invalidFont and never written; bytes at the cap are accepted")
+    func dataSourceCap() async throws {
+        let harness = Harness()
+        let bytes = Fixtures.data(Fixtures.lobster)
+        let source = TestDataSource { _ in bytes }
+
+        await #expect(throws: WebFontError.invalidFont) {
+            try await harness.fetcher(sizeCap: bytes.count - 1).fetchCustom(FontRequest(family: "Lobster"), from: source)
+        }
+        #expect(harness.files.calls(.write).isEmpty)
+        #expect(harness.leftovers.isEmpty)
+
+        let face = try await harness.fetcher(sizeCap: bytes.count).fetchCustom(FontRequest(family: "Lobster"), from: source)
+        #expect(face.postScriptName == "Lobster-Regular")
     }
 
     @Test("a source that fetches for itself never touches the session, and its bytes are judged by CoreText")

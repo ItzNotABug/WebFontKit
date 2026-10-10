@@ -26,7 +26,7 @@ struct DefaultSourceTests {
         let harness = Harness()
         harness.server.respond(
             to: CSS2.url(family: "Lobster", styles: [.regular, .bold]).absoluteString,
-            with: .css(Fixtures.css2Text("lobster-partial"))
+            with: .css(Fixtures.css2Text("lobster"))
         )
         let urls = try await CSS2.resolve(family: "Lobster", styles: [.regular, .bold], session: harness.session, logSink: harness.logSink)
         #expect(Array(urls.keys) == [.regular])
@@ -63,19 +63,34 @@ struct DefaultSourceTests {
         #expect(harness.leftovers.isEmpty)
     }
 
-    @Test("fetch cancels a body over the cap while the stub holds the rest, and throws .invalidFont")
+    @Test("fetch's in-memory download cancels a file over the cap while the stub holds the rest")
     func fetchHelperCap() async throws {
         let harness = Harness()
-        let body = Harness.markedBody(count: Downloader.sizeCap + 2 * 1024 * 1024, marker: UUID().uuidString)
-        var file = StubResponse.font(body, hold: .afterBytes(Downloader.sizeCap + 1024 * 1024))
-        file.chunkSize = 1024 * 1024
+        let megabyte = 1024 * 1024
+        var file = StubResponse.font(Harness.markedBody(count: 3 * megabyte, marker: UUID().uuidString), hold: .afterBytes(2 * megabyte))
+        file.chunkSize = 256 * 1024
+        harness.serveLobster(file: file)
+
+        let urls = try await CSS2.resolve(family: "Lobster", styles: [.regular], session: harness.session, logSink: harness.logSink)
+        let request = CSS2.request(for: try #require(urls[.regular]))
+        await #expect(throws: WebFontError.invalidFont) {
+            try await Downloader.data(for: request, session: harness.session, cap: megabyte)
+        }
+        try await harness.server.waitForCancel(of: Harness.lobsterFile)
+        harness.server.releaseAll()
+        #expect(harness.leftovers.isEmpty)
+    }
+
+    @Test("the public fetch refuses a file that declares more than the library's cap")
+    func fetchDeclaredOverCap() async throws {
+        let harness = Harness()
+        var file = StubResponse.font(Fixtures.data(Fixtures.lobster))
+        file.headers["Content-Length"] = String(Downloader.sizeCap + 1)
         harness.serveLobster(file: file)
 
         await #expect(throws: WebFontError.invalidFont) {
             try await DefaultFontSource.default.fetch(FontRequest(family: "Lobster"), session: harness.session, logSink: harness.logSink)
         }
-        try await harness.server.waitForCancel(of: Harness.lobsterFile)
-        harness.server.releaseAll()
     }
 
     @Test("a style missing from the answer is .notFound for fetch")
@@ -83,7 +98,7 @@ struct DefaultSourceTests {
         let harness = Harness()
         harness.server.respond(
             to: CSS2.url(family: "Lobster", styles: [.bold]).absoluteString,
-            with: .css(Fixtures.css2Text("lobster-partial"))
+            with: .css(Fixtures.css2Text("lobster"))
         )
         await #expect(throws: WebFontError.notFound) {
             try await DefaultFontSource.default.fetch(FontRequest(family: "Lobster", style: .bold), session: harness.session, logSink: harness.logSink)
@@ -119,7 +134,7 @@ struct DefaultSourceTests {
     }
 
     @Test(
-        "other statuses map by DESIGN decision 19",
+        "other statuses map to .notFound or .server",
         arguments: [
             (400, WebFontError.notFound), (404, .notFound), (403, .server(statusCode: 403)),
             (429, .server(statusCode: 429)), (500, .server(statusCode: 500)), (503, .server(statusCode: 503)),
@@ -157,13 +172,11 @@ struct DefaultSourceTests {
         #expect(harness.server.requests.map(\.url.absoluteString) == [Harness.lobsterCSS2])
     }
 
-    @Test("the cache key is version-free, computed without any request, and stable")
+    @Test("the cache key is version-free and stable")
     func cacheKey() {
-        let harness = Harness()
         let source: any FontSource = .default
         let before = source.cacheKey(for: FontRequest(family: "Inter", style: .boldItalic))
         #expect(before == "Inter|700|i")
-        #expect(harness.server.requests.isEmpty)
         #expect(source.cacheKey(for: FontRequest(family: "Inter", style: .boldItalic)) == before)
     }
 

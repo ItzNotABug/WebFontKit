@@ -20,6 +20,12 @@ final class Harness: Sendable {
         FaceFetcher(session: session, directory: directory.store, files: files, registrar: registrar, logSink: logSink)
     }
 
+    func fetcher(sizeCap: Int) -> FaceFetcher {
+        var fetcher = fetcher
+        fetcher.sizeCap = sizeCap
+        return fetcher
+    }
+
     /// The library's own files left in the store.
     var leftovers: [String] {
         directory.fileNames().filter { $0.hasSuffix(".wfkpart") || $0.hasSuffix(".wfkfont") }
@@ -44,27 +50,27 @@ final class Harness: Sendable {
 
     /// `CFNetworkDownload_*.tmp` files in the temporary directory that start with `marker`.
     static func systemTemporaryFiles(startingWith marker: String) -> [String] {
-        let directory = FileManager.default.temporaryDirectory
+        let directory = URL.temporaryDirectory
         let names = (try? FileManager.default.contentsOfDirectory(atPath: directory.path)) ?? []
         return names.filter { name in
             guard name.hasPrefix("CFNetworkDownload_"),
-                  let handle = FileHandle(forReadingAtPath: directory.appendingPathComponent(name).path)
+                  let handle = try? FileHandle(forReadingFrom: directory.appending(component: name))
             else { return false }
             defer { try? handle.close() }
-            return handle.readData(ofLength: marker.utf8.count) == Data(marker.utf8)
+            return (try? handle.read(upToCount: marker.utf8.count)) == Data(marker.utf8)
         }
     }
 }
 
 /// A `RemoteFontSource` for tests: a fixed URL per face, with custom headers.
 struct TestRemoteSource: RemoteFontSource {
-    var base = "https://fonts.example.test/"
+    var base = URL(string: "https://fonts.example.test")!
     var headers: [String: String] = ["Authorization": "Bearer token", "X-Custom": "1"]
     var key: String?
     let fetchCalls = AsyncRecorder<FontRequest>()
 
     func url(for font: FontRequest) -> URL {
-        URL(string: base + HostedFontSource.fileName(for: font).replacingOccurrences(of: " ", with: "%20"))!
+        base.appending(path: HostedFontSource.fileName(for: font))
     }
 
     func request(for font: FontRequest) async throws -> URLRequest {
@@ -82,6 +88,23 @@ struct TestRemoteSource: RemoteFontSource {
 
     func cacheKey(for font: FontRequest) -> String {
         key ?? "\(font.family)|custom"
+    }
+}
+
+/// A remote source whose cache key, and file URL, carry a version the test can change.
+final class VersionedSource: RemoteFontSource, Sendable {
+    let version: Locked<String>
+
+    init(version: String) {
+        self.version = Locked(version)
+    }
+
+    func request(for font: FontRequest) async throws -> URLRequest {
+        URLRequest(url: URL(string: "https://fonts.example.test/\(version.withLock { $0 })/\(font.family).ttf")!)
+    }
+
+    func cacheKey(for font: FontRequest) -> String {
+        "\(font.family)-\(version.withLock { $0 })"
     }
 }
 

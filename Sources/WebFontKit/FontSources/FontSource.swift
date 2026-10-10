@@ -56,7 +56,7 @@ public protocol RemoteFontSource: FontSource {
     ///
     /// ```swift
     /// func request(for font: FontRequest) async throws -> URLRequest {
-    ///     URLRequest(url: base.appendingPathComponent("\(font.family)-\(font.style.weight).ttf"))
+    ///     URLRequest(url: base.appending(path: "\(font.family)-\(font.style.weight).ttf"))
     /// }
     /// ```
     func request(for font: FontRequest) async throws -> URLRequest

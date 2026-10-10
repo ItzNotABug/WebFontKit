@@ -7,11 +7,13 @@ enum StoredFileName {
     static let markerExtension = "wfkmark"
     static let partialExtension = "wfkpart"
 
+    /// A font with its key hash and version, or a system-collision marker.
     enum Kind: Equatable, Sendable {
         case font(hash: String, version: String?)
         case marker
     }
 
+    /// What a stored file's name says: family, style and kind.
     struct Parsed: Equatable, Sendable {
         var family: String
         var style: FontStyle
@@ -72,34 +74,15 @@ enum StoredFileName {
         "\(encode(family))@\(style.weight)\(style.isItalic ? "i" : "n")"
     }
 
+    /// ASCII letters and digits; everything else is percent-encoded, so a name splits cleanly at `@`.
+    private static let unescaped = CharacterSet(charactersIn: "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789")
+
     static func encode(_ family: String) -> String {
-        var encoded = ""
-        for byte in family.utf8 {
-            switch byte {
-            case UInt8(ascii: "a")...UInt8(ascii: "z"), UInt8(ascii: "A")...UInt8(ascii: "Z"),
-                 UInt8(ascii: "0")...UInt8(ascii: "9"):
-                encoded.append(Character(Unicode.Scalar(byte)))
-            default:
-                encoded += String(format: "%%%02X", byte)
-            }
-        }
-        return encoded
+        family.addingPercentEncoding(withAllowedCharacters: unescaped)!
     }
 
     static func decode(_ encoded: String) -> String? {
-        var bytes: [UInt8] = []
-        var iterator = Array(encoded.utf8).makeIterator()
-        while let byte = iterator.next() {
-            if byte == UInt8(ascii: "%") {
-                guard let high = iterator.next(), let low = iterator.next(),
-                      let value = UInt8(String(decoding: [high, low], as: UTF8.self), radix: 16)
-                else { return nil }
-                bytes.append(value)
-            } else {
-                bytes.append(byte)
-            }
-        }
-        return String(bytes: bytes, encoding: .utf8)
+        encoded.removingPercentEncoding
     }
 
     private static func parseStyle(_ field: String) -> FontStyle? {

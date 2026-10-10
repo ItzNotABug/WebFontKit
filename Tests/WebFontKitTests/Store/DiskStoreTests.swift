@@ -23,7 +23,7 @@ struct DiskStoreTests {
         let foreign = ["App.ttf", "photo.png", "old.tmp"]
         for name in foreign {
             try Data("mine".utf8).write(to: store.url(for: name))
-            try Data("mine".utf8).write(to: harness.directory.url.appendingPathComponent(name))
+            try Data("mine".utf8).write(to: harness.directory.url.appending(component: name))
             try age(store.url(for: name), by: 7200)
         }
 
@@ -36,7 +36,7 @@ struct DiskStoreTests {
         try store.sweepStalePartials(now: Date().addingTimeInterval(7200))
         for name in foreign {
             #expect(FileManager.default.fileExists(atPath: store.url(for: name).path))
-            #expect(FileManager.default.fileExists(atPath: harness.directory.url.appendingPathComponent(name).path))
+            #expect(FileManager.default.fileExists(atPath: harness.directory.url.appending(component: name).path))
         }
         #expect(!harness.files.calls(.setExcludedFromBackup).contains { $0.url?.pathExtension == "ttf" })
     }
@@ -58,10 +58,26 @@ struct DiskStoreTests {
         #expect(!FileManager.default.fileExists(atPath: old.path))
     }
 
+    @Test("a file deleted after a listing reads as gone, not from the listing's cached values")
+    func fileEntryIsFresh() throws {
+        let directory = TempDirectory()
+        let file = directory.url.appending(component: "Lobster@400n@abc.wfkfont")
+        try Data("x".utf8).write(to: file)
+        let files = DiskFileOperations()
+        let listed = try #require(files.contentsOfDirectory(at: directory.url).first?.url)
+        #expect(try files.fileEntry(at: listed) != nil)
+
+        try FileManager.default.removeItem(at: file)
+        // Callers read it with `try?`: a throw and a nil both mean gone.
+        #expect((try? files.fileEntry(at: listed)) == nil)
+    }
+
     @Test("a missing store directory lists nothing")
     func missingDirectory() throws {
-        let store = Store(directory: TempDirectory().url.appendingPathComponent("absent"), files: FakeFileOperations())
+        let directory = TempDirectory()
+        let store = Store(directory: directory.url.appending(component: "absent", directoryHint: .isDirectory), files: FakeFileOperations())
         #expect(try store.ownedFiles().isEmpty)
+        withExtendedLifetime(directory) {}
     }
 
     @Test("a marker is written as a partial, given its attribute and backup exclusion, then renamed")

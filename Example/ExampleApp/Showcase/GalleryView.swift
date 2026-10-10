@@ -22,9 +22,8 @@ final class PrefetchModel {
             if Task.isCancelled {
                 summary = "Stopped: \(ready)"
             } else {
-                let elapsed = (clock.now - started).formatted(.units(allowed: [.seconds, .milliseconds], width: .narrow))
                 let failed = results.failed.map(\.family)
-                summary = "\(ready) in \(elapsed)" + (failed.isEmpty ? "" : " · failed: \(failed.joined(separator: ", "))")
+                summary = "\(ready) in \((clock.now - started).brief)" + (failed.isEmpty ? "" : " · failed: \(failed.joined(separator: ", "))")
             }
             task = nil
         }
@@ -48,8 +47,7 @@ struct GalleryView: View {
     @Environment(\.dynamicTypeSize) private var typeSize
     @ScaledMetric(relativeTo: .footnote) private var statusHeight: CGFloat = 20
     /// `-ExampleSpecimen <family>` opens a specimen directly, for screenshots.
-    @State private var path: [String] = ProcessInfo.processInfo.arguments.firstIndex(of: "-ExampleSpecimen")
-        .map { ProcessInfo.processInfo.arguments.dropFirst($0 + 1).prefix(1).map { $0 } } ?? []
+    @State private var path = UserDefaults.standard.string(forKey: "ExampleSpecimen").map { [$0] } ?? []
 
     var body: some View {
         NavigationStack(path: $path) { content }
@@ -115,11 +113,17 @@ struct GalleryView: View {
 
 struct GalleryCard: View {
     let family: String
-    @State private var phase: WebFontPhase = .loading
+    @State private var phase: WebFontPhase
     /// Fixed slots, so differing font metrics never shift the grid, scaled with Dynamic Type.
     @ScaledMetric(relativeTo: .body) private var glyphSlot: CGFloat = 64
     @ScaledMetric(relativeTo: .body) private var sampleSlot: CGFloat = 22
     @ScaledMetric(relativeTo: .body) private var cardHeight: CGFloat = 160
+
+    /// A stored face starts drawn, with no skeleton to fade out.
+    init(family: String) {
+        self.family = family
+        _phase = State(initialValue: FontLibrary.initialPhase(family, style: .regular))
+    }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {

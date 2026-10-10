@@ -10,7 +10,7 @@ struct PublicEntryPointGuardTests {
     func mainActorCallers() async throws {
         #expect(pthread_main_np() != 0)
         let harness = Harness()
-        harness.serveGoogle()
+        harness.server.serveGoogle()
         try harness.storeFont(Fixtures.lobster, family: "Lobster", version: "v1")
         let fonts = harness.makeFonts()
 
@@ -26,10 +26,10 @@ struct PublicEntryPointGuardTests {
         #expect(harness.logSink.entriesLoggedUnderLock.isEmpty)
     }
 
-    @Test("the synchronous members can be called from detached tasks while loads run")
+    @Test("the synchronous members can be called from detached tasks while loads run, and start one warm-up")
     func synchronousMembersOffMain() async throws {
         let harness = Harness()
-        harness.serveGoogle()
+        harness.server.serveGoogle()
         let fonts = harness.makeFonts()
         let loads = Task.detached { try await fonts.load("Lobster") }
         await withTaskGroup(of: Void.self) { group in
@@ -43,5 +43,11 @@ struct PublicEntryPointGuardTests {
             }
         }
         try await loads.value
+
+        // Every configure keeps the same store, so only the first use warms up.
+        #expect(fonts.startedWarmUps == 1)
+        #expect(fonts.postScriptName(family: "Lobster", style: .regular) == "Lobster-Regular")
+        #expect(fonts.downloaded.map(\.family) == ["Lobster"])
+        #expect(harness.logSink.entriesLoggedUnderLock.isEmpty)
     }
 }

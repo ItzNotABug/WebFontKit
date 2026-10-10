@@ -8,12 +8,14 @@ struct CoalescingTests {
     @Test("fifty concurrent loads make one CSS2 request and one font request, and emit one pair of events")
     func fiftyCallers() async throws {
         let harness = Harness()
-        harness.serveGoogle(holdCSS: true)
+        harness.server.serveGoogle(holdCSS: true)
         let fonts = harness.makeFonts()
         let events = try await harness.warmUp(fonts)
+        let joins = harness.joins(on: fonts)
 
         try await withThrowingTaskGroup(of: Void.self) { group in
             for _ in 0..<50 { group.addTask { try await fonts.load("Lobster") } }
+            try await joins.wait { $0.count == 49 }
             try await harness.server.waitForRequests { harness.isCSS2($0) }
             harness.server.releaseAll()
             try await group.waitForAll()
@@ -23,8 +25,7 @@ struct CoalescingTests {
         #expect(harness.fileRequests == 1)
         #expect(fonts.postScriptName(family: "Lobster", style: .regular) == "Lobster-Regular")
         try await events.wait { $0.contains(.loaded(family: "Lobster", styles: [.regular])) }
-        #expect(events.elements.filter { if case .warmedUp = $0 { false } else { true } }
-            == [.loading(family: "Lobster", styles: [.regular]), .loaded(family: "Lobster", styles: [.regular])])
+        #expect(events.loadEvents == [.loading(family: "Lobster", styles: [.regular]), .loaded(family: "Lobster", styles: [.regular])])
         #expect(harness.logSink.entriesLoggedUnderLock.isEmpty)
     }
 
@@ -35,9 +36,11 @@ struct CoalescingTests {
         harness.server.respond(to: "https://cdn.example.test/fonts/Lobster.ttf", with: .font(Fixtures.data(Fixtures.lobster), hold: .beforeResponse))
         let fonts = harness.makeFonts(source: .hosted(at: base))
         try await harness.warmUp(fonts)
+        let joins = harness.joins(on: fonts)
 
         try await withThrowingTaskGroup(of: Void.self) { group in
             for _ in 0..<50 { group.addTask { try await fonts.load("Lobster") } }
+            try await joins.wait { $0.count == 49 }
             try await harness.server.waitForRequests()
             harness.server.releaseAll()
             try await group.waitForAll()
@@ -48,7 +51,7 @@ struct CoalescingTests {
     @Test("a multi-style call missing a style throws .notFound before any file request, storing nothing")
     func allOrNothing() async throws {
         let harness = Harness()
-        harness.serveGoogle()
+        harness.server.serveGoogle()
         let fonts = harness.makeFonts()
         try await harness.warmUp(fonts)
 
@@ -77,7 +80,7 @@ struct CoalescingTests {
     @Test("with the CSS2 answer held, an incomplete call fails while a complete one succeeds", arguments: [true, false])
     func incompleteBesideComplete(incompleteFirst: Bool) async throws {
         let harness = Harness()
-        harness.serveGoogle(holdCSS: true)
+        harness.server.serveGoogle(holdCSS: true)
         let fonts = harness.makeFonts()
         try await harness.warmUp(fonts)
 
@@ -100,7 +103,6 @@ struct CoalescingTests {
 
         await #expect(throws: WebFontError.notFound) { try await incomplete.value }
         try await complete.value
-        harness.server.releaseAll()
         #expect(harness.directory.fileNames().filter { $0.hasSuffix(".wfkfont") }.count == 1)
         #expect(harness.registrar.calls(.register).count == 1)
     }
@@ -108,7 +110,7 @@ struct CoalescingTests {
     @Test("cancelling one of three waiters keeps the download; cancelling all three cancels it")
     func cancellation() async throws {
         let harness = Harness()
-        harness.serveGoogle(holdFiles: true)
+        harness.server.serveGoogle(holdFiles: true)
         let fonts = harness.makeFonts()
         try await harness.warmUp(fonts)
 
@@ -143,7 +145,7 @@ struct CoalescingTests {
         await #expect(throws: WebFontError.server(statusCode: 503)) { try await first.value }
         await #expect(throws: WebFontError.server(statusCode: 503)) { try await second.value }
         let before = harness.css2Requests
-        harness.serveGoogle()
+        harness.server.serveGoogle()
         try await fonts.load("Lobster")
         #expect(harness.css2Requests == before + 1)
     }
@@ -179,14 +181,13 @@ struct CoalescingTests {
     @Test("duplicate styles make one request for one tuple, and one pair of events")
     func duplicateStyles() async throws {
         let harness = Harness()
-        harness.serveGoogle()
+        harness.server.serveGoogle()
         let fonts = harness.makeFonts()
         let events = try await harness.warmUp(fonts)
         try await fonts.load("Lobster", styles: [.regular, .regular])
         try await events.wait { $0.contains(.loaded(family: "Lobster", styles: [.regular])) }
         #expect(harness.server.requests.first { harness.isCSS2($0.url) }?.url.query == "family=Lobster:ital,wght@0,400")
-        #expect(events.elements.filter { if case .warmedUp = $0 { false } else { true } }
-            == [.loading(family: "Lobster", styles: [.regular]), .loaded(family: "Lobster", styles: [.regular])])
+        #expect(events.loadEvents == [.loading(family: "Lobster", styles: [.regular]), .loaded(family: "Lobster", styles: [.regular])])
     }
 
     @Test("an invalid family name is .notFound with no request, and emits loading then failed", arguments: ["", " Lobster", "Lob  ster", "Lob/ster", "Lobster "])
@@ -202,21 +203,21 @@ struct CoalescingTests {
     @Test("a registered face returns at once, with no request and no event")
     func registryHit() async throws {
         let harness = Harness()
-        harness.serveGoogle()
+        harness.server.serveGoogle()
         let fonts = harness.makeFonts()
         let events = try await harness.warmUp(fonts)
         try await fonts.load("Lobster")
         try await events.wait { $0.contains(.loaded(family: "Lobster", styles: [.regular])) }
-        let count = events.elements.count
         try await fonts.load("Lobster")
-        #expect(harness.css2Requests == 1)
-        #expect(events.elements.count == count)
+        try await harness.sentinel(fonts, events, after: "Lobster")
+        #expect(harness.css2Requests(for: "Lobster") == 1)
+        #expect(events.loadEvents == [.loading(family: "Lobster", styles: [.regular]), .loaded(family: "Lobster", styles: [.regular])])
     }
 
     @Test("a removed font is downloaded again by the next load")
     func removedThenLoaded() async throws {
         let harness = Harness()
-        harness.serveGoogle()
+        harness.server.serveGoogle()
         let fonts = harness.makeFonts()
         try await harness.warmUp(fonts)
         try await fonts.load("Lobster")
@@ -230,7 +231,7 @@ struct CoalescingTests {
     @Test("works end to end without configure, on an injected root")
     func noConfigure() async throws {
         let harness = Harness()
-        harness.serveGoogle()
+        harness.server.serveGoogle()
         let fonts = harness.makeFonts()
         try await fonts.load("Lobster")
         #expect(fonts.downloaded.map(\.postScriptName) == ["Lobster-Regular"])

@@ -4,19 +4,16 @@ import WebFontKit
 /// What is stored, with the exact PostScript name to use with `UIFont(name:size:)`.
 struct LibraryView: View {
     @Environment(FontLibrary.self) private var library
+    @Environment(\.dynamicTypeSize) private var typeSize
     @State private var confirmRemoveAll = false
 
     var body: some View {
+        // Side by side, stacked at accessibility text sizes.
+        let layout = typeSize.isAccessibilitySize ? AnyLayout(VStackLayout(spacing: 12)) : AnyLayout(HStackLayout(spacing: 16))
         List {
             Section {
-                // Side by side when they fit; stacked at large text sizes.
-                ViewThatFits(in: .horizontal) {
-                    HStack(spacing: 16) {
-                        stats(dividers: true)
-                    }
-                    VStack(spacing: 12) {
-                        stats(dividers: false)
-                    }
+                layout {
+                    stats(dividers: !typeSize.isAccessibilitySize)
                 }
                 .frame(maxWidth: .infinity)
                 .padding(.vertical, 6)
@@ -57,23 +54,22 @@ struct LibraryView: View {
 
     @ViewBuilder
     private func stats(dividers: Bool) -> some View {
-        stat(value: library.fonts.count.formatted(), label: library.fonts.count == 1 ? "face" : "faces")
-        if dividers { Divider().frame(height: 36) }
-        stat(value: library.familyCount.formatted(), label: library.familyCount == 1 ? "family" : "families")
-        if dividers { Divider().frame(height: 36) }
-        stat(value: ByteCountFormatter.string(fromByteCount: library.totalBytes, countStyle: .file), label: "on disk")
+        stat(Text("^[\(library.fonts.count) face](inflect: true)"))
+        if dividers { Divider().frame(height: 28) }
+        stat(Text("^[\(library.familyCount) family](inflect: true)"))
+        if dividers { Divider().frame(height: 28) }
+        stat(Text("\(library.totalBytes, format: .byteCount(style: .file)) on disk"))
     }
 
-    private func stat(value: String, label: String) -> some View {
-        VStack(spacing: 2) {
-            Text(value).font(.title3.weight(.semibold).monospacedDigit())
-            Text(label).font(.caption).foregroundStyle(.secondary)
-        }
-        .frame(maxWidth: .infinity)
+    private func stat(_ text: Text) -> some View {
+        text
+            .font(.headline.monospacedDigit())
+            .multilineTextAlignment(.center)
+            .frame(maxWidth: .infinity)
     }
 
     private func row(_ font: DownloadedFont) -> some View {
-        let size = ByteCountFormatter.string(fromByteCount: Int64(font.byteCount), countStyle: .file)
+        let size = Int64(font.byteCount).formatted(.byteCount(style: .file))
         return VStack(alignment: .leading, spacing: 6) {
             Text(font.family).font(.custom(font.postScriptName, size: 24))
                 .lineLimit(1).minimumScaleFactor(0.6)

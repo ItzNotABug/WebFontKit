@@ -29,8 +29,16 @@ public final class WebFonts: Sendable {
         /// ```
         public enum Storage: Sendable {
             /// Kept on disk and registered again at the next launch.
+            ///
+            /// ```swift
+            /// WebFonts.shared.configure(.init(storage: .persistent, directory: appGroupURL))
+            /// ```
             case persistent
             /// Kept for this process only; deleted at the next launch.
+            ///
+            /// ```swift
+            /// WebFonts.shared.configure(.init(storage: .session))  // a preview or a one-off session
+            /// ```
             case session
         }
 
@@ -262,6 +270,7 @@ final class TestHooks: Sendable {
         var beforePark: (@Sendable () async -> Void)?
         var beforeAlias: (@Sendable () async -> Void)?
         var onWarmUpWait: (@Sendable () -> Void)?
+        var onFetch: (@Sendable (String) -> Void)?
     }
 
     private let closures = Locked(Closures())
@@ -284,6 +293,12 @@ final class TestHooks: Sendable {
         set { closures.withLock { $0.beforeAlias = newValue } }
     }
 
+    /// Called with the family each time a face's download starts.
+    var onFetch: (@Sendable (String) -> Void)? {
+        get { closures.withLock { $0.onFetch } }
+        set { closures.withLock { $0.onFetch = newValue } }
+    }
+
     /// Called each time a caller starts waiting on an unfinished warm-up.
     var onWarmUpWait: (@Sendable () -> Void)? {
         get { closures.withLock { $0.onWarmUpWait } }
@@ -291,30 +306,3 @@ final class TestHooks: Sendable {
     }
 }
 #endif
-
-/// The configuration in force, resolved once.
-struct Snapshot: Sendable {
-    var configuration: WebFonts.Configuration
-    var sourceID: Int
-    var directory: URL
-    var session: URLSession
-
-    init(_ configuration: WebFonts.Configuration, sourceID: Int, root: URL?) {
-        self.configuration = configuration
-        self.sourceID = sourceID
-        directory = StoreLocation.directory(isSession: configuration.storage == .session,
-                                            configured: configuration.directory, root: root)
-        session = configuration.session ?? LibrarySession.shared
-    }
-
-    var source: any FontSource { configuration.source }
-    var usesDefaultSource: Bool { source is DefaultFontSource }
-
-    func cacheKey(_ key: FaceKey) -> String {
-        source.cacheKey(for: FontRequest(family: key.family, style: key.style))
-    }
-
-    func keyHash(_ key: FaceKey) -> String {
-        StoredFileName.keyHash(family: key.family, style: key.style, cacheKey: cacheKey(key))
-    }
-}

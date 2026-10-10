@@ -3,32 +3,30 @@ import WebFontKit
 
 /// The demo: try any family, browse a gallery, see what is stored, and watch events.
 struct ShowcaseView: View {
-    enum Tab: Int, CaseIterable {
-        case play, gallery, library, activity
+    enum Screen: Int {
+        case tryIt, gallery, library, activity
 
         /// `-ExampleTab <n>` opens a tab directly, for screenshots.
-        static var atLaunch: Tab {
-            let arguments = ProcessInfo.processInfo.arguments
-            guard let index = arguments.firstIndex(of: "-ExampleTab"), index + 1 < arguments.count,
-                  let raw = Int(arguments[index + 1]) else { return .play }
-            return Tab(rawValue: raw) ?? .play
+        static var atLaunch: Screen {
+            Screen(rawValue: UserDefaults.standard.integer(forKey: "ExampleTab")) ?? .tryIt
         }
     }
 
     @State private var library = FontLibrary()
     @State private var events = EventLog()
-    @State private var tab = Tab.atLaunch
+    @State private var screen = Screen.atLaunch
+    @State private var tryModel = TryModel()
 
     var body: some View {
-        TabView(selection: $tab) {
-            NavigationStack { TryView() }
-                .tabItem { Label("Try", systemImage: "textformat.size") }.tag(Tab.play)
+        TabView(selection: $screen) {
+            NavigationStack { TryView(model: tryModel) }
+                .tabItem { Label("Try", systemImage: "textformat.size") }.tag(Screen.tryIt)
             GalleryView()
-                .tabItem { Label("Gallery", systemImage: "square.grid.2x2.fill") }.tag(Tab.gallery)
+                .tabItem { Label("Gallery", systemImage: "square.grid.2x2") }.tag(Screen.gallery)
             NavigationStack { LibraryView() }
-                .tabItem { Label("Library", systemImage: "internaldrive.fill") }.tag(Tab.library)
+                .tabItem { Label("Library", systemImage: "internaldrive") }.tag(Screen.library)
             NavigationStack { EventsView() }
-                .tabItem { Label("Activity", systemImage: "waveform.path.ecg") }.tag(Tab.activity)
+                .tabItem { Label("Activity", systemImage: "waveform.path.ecg") }.tag(Screen.activity)
         }
         .tint(Theme.accent)
         .environment(library)

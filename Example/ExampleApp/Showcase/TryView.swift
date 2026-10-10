@@ -6,9 +6,8 @@ import WebFontKit
 @MainActor
 @Observable
 final class TryModel {
-    static let weights: [(name: String, weight: Font.Weight, css: Int)] = [
-        ("Thin", .thin, 200), ("Light", .light, 300), ("Regular", .regular, 400), ("Medium", .medium, 500),
-        ("Semibold", .semibold, 600), ("Bold", .bold, 700), ("Black", .black, 900),
+    static let weights: [(weight: Font.Weight, css: Int)] = [
+        (.thin, 200), (.light, 300), (.regular, 400), (.medium, 500), (.semibold, 600), (.bold, 700), (.black, 900),
     ]
     static let suggestions = ["Lobster", "Pacifico", "Inter", "Playfair Display", "Caveat", "Bebas Neue", "Noto Sans Kannada"]
     private static let defaultSample = "The quick brown fox jumps over the lazy dog"
@@ -23,7 +22,7 @@ final class TryModel {
     var weight: Font.Weight = .regular
     var italic = false
     var size: Double = 38
-    var phase: WebFontPhase = .loading
+    var phase: WebFontPhase
     /// Bumped by Retry: a new identity for the preview restarts its load.
     private(set) var attempt = 0
 
@@ -35,6 +34,9 @@ final class TryModel {
         self.family = family
         input = family
         sample = defaults.string(forKey: "try.sample") ?? Self.defaultSample
+        phase = .loading
+        // A stored face is ready on the first frame.
+        phase = FontLibrary.initialPhase(family, style: style)
     }
 
     /// The style the preview asks for, as the library names it.
@@ -42,15 +44,26 @@ final class TryModel {
         FontStyle(weight: Self.weights.first { $0.weight == weight }?.css ?? 400, italic: italic)
     }
 
+    /// The family typed in the field, trimmed.
+    var pendingFamily: String {
+        input.trimmingCharacters(in: .whitespacesAndNewlines)
+    }
+
     var hasPendingInput: Bool {
-        let name = normalized(input)
-        return !name.isEmpty && name != family
+        !pendingFamily.isEmpty && pendingFamily != family
+    }
+
+    /// What VoiceOver announces once a load settles. It names the family, so switching
+    /// between two stored families is announced too.
+    var announcement: String? {
+        phase == .loading ? nil : "\(family): \(phase.label)"
     }
 
     func submit() {
-        let name = normalized(input)
+        let name = pendingFamily
         guard !name.isEmpty, name != family else { return }
         family = name
+        phase = FontLibrary.initialPhase(name, style: style)
     }
 
     func choose(_ name: String) {
@@ -61,17 +74,13 @@ final class TryModel {
     func retry() {
         attempt += 1
     }
-
-    private func normalized(_ name: String) -> String {
-        name.trimmingCharacters(in: .whitespacesAndNewlines)
-    }
 }
 
 /// Type a family name and watch it swap in, with any weight, style and size.
 struct TryView: View {
     enum Field { case family, sample }
 
-    @State private var model = TryModel()
+    let model: TryModel
     @State private var showsAbout = false
     @FocusState private var focus: Field?
 
@@ -110,9 +119,8 @@ struct TryView: View {
             case .loading: nil
             }
         }
-        .onChange(of: model.phase) { _, phase in
-            guard phase != .loading else { return }
-            AccessibilityNotification.Announcement("\(model.family): \(phase.label)").post()
+        .onChange(of: model.announcement) { _, announcement in
+            if let announcement { AccessibilityNotification.Announcement(announcement).post() }
         }
     }
 }
@@ -179,11 +187,11 @@ private struct FamilyCard: View {
                     .autocorrectionDisabled()
                     .textInputAutocapitalization(.words)
                     .submitLabel(.go)
-                    .onSubmit(model.submit)
+                    .onSubmit(submit)
                     .accessibilityLabel("Font family")
                 if model.hasPendingInput {
                     Button {
-                        model.submit()
+                        submit()
                         focus.wrappedValue = nil
                     } label: {
                         Text("Load").frame(minWidth: 44, minHeight: 44).contentShape(.rect)
@@ -199,13 +207,19 @@ private struct FamilyCard: View {
                 GlassGroup {
                     HStack(spacing: 10) {
                         ForEach(TryModel.suggestions, id: \.self) { name in
-                            FontChip(family: name, selected: name == model.family) { model.choose(name) }
+                            FontChip(family: name, selected: name == model.family) {
+                                model.choose(name)
+                            }
                         }
                     }
                 }
                 .padding(.vertical, 2)
             }
         }
+    }
+
+    private func submit() {
+        model.submit()
     }
 }
 
@@ -218,18 +232,13 @@ private struct StyleCard: View {
             ScrollView(.horizontal, showsIndicators: false) {
                 GlassGroup {
                     HStack(spacing: 8) {
-                        ForEach(TryModel.weights, id: \.name) { option in
+                        ForEach(TryModel.weights, id: \.css) { option in
                             let selected = model.weight == option.weight
                             Button { model.weight = option.weight } label: {
-                                Text(option.name).font(.system(.subheadline, weight: option.weight))
-                                    .foregroundStyle(selected ? .black : .white)
-                                    .padding(.horizontal, 14)
-                                    .frame(minHeight: 44)
-                                    .background { if selected { Capsule().fill(Theme.accent) } }
-                                    .contentShape(.capsule)
+                                Text(FontStyle(weight: option.css).displayName)
+                                    .font(.system(.subheadline, weight: option.weight))
                             }
-                            .buttonStyle(.plain)
-                            .glassCapsule()
+                            .buttonStyle(ChipButtonStyle(selected: selected))
                             .accessibilityAddTraits(selected ? .isSelected : [])
                         }
                     }

@@ -98,18 +98,20 @@ extension WebFonts {
             let joined = toStart.count < keys.count
             guard !toStart.isEmpty else { return ([], nil, joined) }
             state.closes[call] = PendingClose(family: family, styles: asked, epochs: epochs, keys: Set(keys))
+            var resolve: (UUID, [StyleKey])?
             if snapshot.usesDefaultSource {
                 let id = UUID()
                 for key in toStart {
                     state.jobs[key] = StyleJob(snapshot: snapshot, stage: .resolving(id), waiters: [call])
                 }
                 state.resolves[id] = (nil, toStart)
-                return (toStart.map { ($0, state.jobs[$0]!.id) }, (id, toStart), joined)
+                resolve = (id, toStart)
+            } else {
+                for key in toStart {
+                    state.jobs[key] = StyleJob(snapshot: snapshot, stage: .fetching, waiters: [call])
+                }
             }
-            for key in toStart {
-                state.jobs[key] = StyleJob(snapshot: snapshot, stage: .fetching, waiters: [call])
-            }
-            return (toStart.map { ($0, state.jobs[$0]!.id) }, nil, joined)
+            return (toStart.map { ($0, state.jobs[$0]!.id) }, resolve, joined)
         }
         #if DEBUG
         if joined { hooks.onJoin?(family) }
@@ -152,8 +154,10 @@ extension WebFonts {
             state.withLock { _ = $0.calls.removeValue(forKey: call) }
             throw CancellationError()
         case .failed(let error):
-            state.withLock { _ = $0.calls.removeValue(forKey: call) }
-            let draining = state.withLock { state in state.draining.values.filter { keys.contains($0.key) }.map(\.task) }
+            let draining = state.withLock { state in
+                state.calls[call] = nil
+                return state.draining.values.filter { keys.contains($0.key) }.map(\.task)
+            }
             for task in draining { await task.value }
             close(call, with: .failed(family: family, styles: asked, error: error))
             throw error
@@ -208,9 +212,7 @@ extension WebFonts {
     /// The starting call sends its own closing event, unless `remove` overtook it.
     private func close(_ call: UUID, with event: WebFontEvent?) {
         guard let close = state.withLock({ $0.closes.removeValue(forKey: call) }), let event else { return }
-        if registry.epochs(for: close.family) == close.epochs {
-            hub.emit(event)
-        }
+        emitIfCurrent(close, event)
     }
 
     /// A parked call withdraws at once; one not yet parked withdraws as it parks.
@@ -235,7 +237,7 @@ extension WebFonts {
         // Deleted before any waiter resumes, so a failed call leaves nothing behind.
         if !effects.deletes.isEmpty {
             let files = files
-            if pthread_main_np() == 0 {
+            if !Thread.isMainThread {
                 for url in effects.deletes { _ = try? files.delete(at: url) }
             } else {
                 Task.detached { for url in effects.deletes { _ = try? files.delete(at: url) } }
@@ -250,46 +252,45 @@ extension WebFonts {
         for start in effects.start {
             startFetch(start.key, url: start.url, job: start.job, snapshot: start.snapshot)
         }
-        let registry = registry
-        let hub = hub
-        let closes = effects.closes
-        if !closes.isEmpty {
-            for (close, event) in closes where registry.epochs(for: close.family) == close.epochs {
-                hub.emit(event)
-            }
+        for (close, event) in effects.closes {
+            emitIfCurrent(close, event)
+        }
+    }
+
+    /// A closing event is sent only if `remove` hasn't overtaken the load since it started.
+    private func emitIfCurrent(_ close: PendingClose, _ event: WebFontEvent) {
+        if registry.epochs(for: close.family) == close.epochs {
+            hub.emit(event)
         }
     }
 
     private func startResolve(_ id: UUID, keys: [StyleKey], snapshot: Snapshot) {
         guard let family = keys.first?.family else { return }
         let task = Task { [self] in
-            let outcome: Result<[FontStyle: URL], WebFontError>?
+            let outcome: Result<[FontStyle: URL], WebFontError>
             do {
                 outcome = .success(try await CSS2.resolve(family: family, styles: keys.map(\.style),
                                                           session: snapshot.session, logSink: logSink))
             } catch let error as WebFontError {
                 outcome = .failure(error)
             } catch {
-                // Our own cancel abandons the resolve; any other ends it as a failure.
-                outcome = Task.isCancelled ? nil : .failure(.network(.cancelled))
+                // A cancelled resolve's jobs are already gone, so this only ends jobs still waiting.
+                outcome = .failure(.network(.cancelled))
             }
             let effects = state.withLock { state -> Effects in
                 for key in keys {
                     guard case .resolving(id)? = state.jobs[key]?.stage else { continue }
                     switch outcome {
-                    case .success(let urls)?:
+                    case .success(let urls):
                         if let url = urls[key.style] {
                             state.jobs[key]?.stage = .ready(url)
                         } else {
                             state.jobs[key]?.stage = .failed(.notFound)
                             state.recordFailure(key, .notFound)
                         }
-                    case .failure(let error)?:
+                    case .failure(let error):
                         state.jobs[key]?.stage = .failed(error)
                         state.recordFailure(key, error)
-                    case nil:
-                        state.jobs[key]?.stage = .failed(.network(.cancelled))
-                        state.recordFailure(key, .network(.cancelled))
                     }
                 }
                 state.resolves[id] = nil
@@ -305,10 +306,13 @@ extension WebFonts {
     }
 
     private func startFetch(_ key: StyleKey, url: URL?, job: UUID, snapshot: Snapshot) {
+        #if DEBUG
+        hooks.onFetch?(key.family)
+        #endif
         let task = Task { [self] in
             let fetcher = FaceFetcher(session: snapshot.session, directory: snapshot.directory, files: files,
                                       registrar: registry.registrar, logSink: logSink)
-            let outcome: Result<ValidatedFace, WebFontError>?
+            let outcome: Result<ValidatedFace, WebFontError>
             do {
                 try files.createDirectory(at: snapshot.directory)
                 if let url {
@@ -319,8 +323,9 @@ extension WebFonts {
             } catch let error as WebFontError {
                 outcome = .failure(error)
             } catch is CancellationError {
-                // Our own cancel abandons the job; any other ends it as a failure, or it would never end.
-                outcome = Task.isCancelled ? nil : .failure(.network(.cancelled))
+                // Only a current job records it: our own cancel has already dropped the job, and a
+                // source's own `CancellationError` must still end it.
+                outcome = .failure(.network(.cancelled))
             } catch {
                 outcome = .failure(.storage)
             }
@@ -331,19 +336,17 @@ extension WebFonts {
                 // A job abandoned and started again under the same key is a different job.
                 let current = state.jobs[key]?.id == job
                 switch outcome {
-                case .success(let face)?:
+                case .success(let face):
                     if current, case .fetching? = state.jobs[key]?.stage {
                         state.jobs[key]?.stage = .validated(face)
                     } else {
                         orphan = face.partialURL
                     }
-                case .failure(let error)?:
+                case .failure(let error):
                     if current {
                         state.jobs[key]?.stage = .failed(error)
                         state.recordFailure(key, error)
                     }
-                case nil:
-                    break
                 }
                 state.advance(&effects)
                 return (effects, orphan)
@@ -369,7 +372,7 @@ extension WebFonts {
         let faceKey = key.face
         let outcome = await registry.faceTurns.with(faceKey) { () async -> CommitOutcome in
             let hash = snapshot.keyHash(faceKey)
-            let final = snapshot.directory.appendingPathComponent(
+            let final = snapshot.directory.appending(component: 
                 StoredFileName.font(family: key.family, style: key.style, cacheKey: snapshot.cacheKey(faceKey), version: face.version)
             )
             do {
@@ -413,5 +416,4 @@ extension WebFonts {
         perform(effects)
         return outcome
     }
-
 }

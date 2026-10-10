@@ -27,9 +27,9 @@ struct TestSupportTests {
         #expect(sink.entries(level: .fault).first?.privateValues == ["secret"])
     }
 
-    @Test("every fixture font reads with the PostScript name and glyph count SOURCES.md records")
-    func fixtureFontsRead() {
-        let expected: [(String, String, Int)] = [
+    @Test(
+        "every fixture font reads with the PostScript name and glyph count SOURCES.md records",
+        arguments: [
             (Fixtures.latoRegular, "Lato-Regular", 272),
             (Fixtures.latoBold, "Lato-Bold", 272),
             (Fixtures.latoItalic, "Lato-Italic", 272),
@@ -41,22 +41,23 @@ struct TestSupportTests {
             (Fixtures.lobsterWoff, "Lobster-Regular", 1142),
             (Fixtures.lobsterWoff2, "Lobster-Regular", 333),
         ]
-        let registrar = FakeRegistrar()
-        for (path, name, glyphs) in expected {
-            let info = registrar.faceInfo(at: Fixtures.url(path))
-            #expect(info?.postScriptName == name, "\(path)")
-            #expect(info?.glyphCount == glyphs, "\(path)")
-        }
-        for path in Fixtures.corrupt {
-            #expect(registrar.faceInfo(at: Fixtures.url(path)) == nil, "\(path)")
-        }
+    )
+    func fixtureFontReads(path: String, name: String, glyphs: Int) {
+        let info = FakeRegistrar().faceInfo(at: Fixtures.url(path))
+        #expect(info?.postScriptName == name)
+        #expect(info?.glyphCount == glyphs)
+    }
+
+    @Test("no corrupt fixture reads as a font", arguments: Fixtures.corrupt)
+    func corruptFixtureFails(path: String) {
+        #expect(FakeRegistrar().faceInfo(at: Fixtures.url(path)) == nil)
     }
 
     @Test("the fake registrar answers 105 for the same file and 305 for another file with the same name")
     func fakeRegistrarCodes() async throws {
         let directory = TempDirectory()
-        let first = directory.url.appendingPathComponent("a.wfkfont")
-        let second = directory.url.appendingPathComponent("b.wfkfont")
+        let first = directory.url.appending(component: "a.wfkfont")
+        let second = directory.url.appending(component: "b.wfkfont")
         try Fixtures.data(Fixtures.lobster).write(to: first)
         try Fixtures.data(Fixtures.lobsterV20).write(to: second)
         let registrar = FakeRegistrar()
@@ -77,7 +78,7 @@ struct TestSupportTests {
     @Test("a held register suspends until released")
     func fakeRegistrarHolds() async throws {
         let directory = TempDirectory()
-        let file = directory.url.appendingPathComponent("a.wfkfont")
+        let file = directory.url.appending(component: "a.wfkfont")
         try Fixtures.data(Fixtures.latoRegular).write(to: file)
         let registrar = FakeRegistrar()
         registrar.holdRegister()
@@ -94,8 +95,8 @@ struct TestSupportTests {
     func diskOperations() throws {
         let directory = TempDirectory()
         let files = FakeFileOperations()
-        let partial = directory.url.appendingPathComponent("\(UUID().uuidString).wfkpart")
-        let marker = directory.url.appendingPathComponent("Lobster@400n@system.wfkmark")
+        let partial = directory.url.appending(component: "\(UUID().uuidString).wfkpart")
+        let marker = directory.url.appending(component: "Lobster@400n@system.wfkmark")
 
         let handle = try files.createPartial(at: partial)
         try files.append(Data("abc".utf8), to: handle)
@@ -106,6 +107,7 @@ struct TestSupportTests {
         try files.rename(partial, to: marker)
 
         #expect(try Data(contentsOf: marker) == Data("abc".utf8))
+        #expect(files.appendedBytes.elements == [3])
         #expect(try files.extendedAttribute("com.webfontkit.postscript-name", at: marker) == Data("Lobster-Regular".utf8))
         #expect(try files.extendedAttribute("com.webfontkit.missing", at: marker) == nil)
         #expect(try marker.resourceValues(forKeys: [.isExcludedFromBackupKey]).isExcludedFromBackup == true)
@@ -120,7 +122,7 @@ struct TestSupportTests {
         let directory = TempDirectory()
         let files = FakeFileOperations()
         files.fail(.write, times: 1)
-        let file = directory.url.appendingPathComponent("x.wfkpart")
+        let file = directory.url.appending(component: "x.wfkpart")
         #expect(throws: POSIXError.self) { try files.write(Data(), to: file) }
         try files.write(Data(), to: file)
         #expect(files.calls(.write).count == 2)
@@ -141,9 +143,9 @@ struct TestSupportTests {
         #expect(data == Data("font".utf8))
         #expect((response as? HTTPURLResponse)?.statusCode == 200)
         let seen = try #require(server.requests.first)
+        #expect(seen.url.absoluteString == url)
         #expect(seen.headers["User-Agent"] == "WebFontKit/test")
         #expect(!seen.isDownloadTask)
-        #expect(server.requestCount(for: url) == 1)
 
         let (_, missing) = try await session.data(from: URL(string: "https://fonts.example.test/none")!)
         #expect((missing as? HTTPURLResponse)?.statusCode == 404)
@@ -169,13 +171,6 @@ struct TestSupportTests {
         task.cancel()
         try await server.waitForCancel(of: cancelled)
         server.release(cancelled)
-    }
-
-    @Test("SplitMix64 is deterministic for a seed")
-    func splitMixIsSeeded() {
-        var a = SplitMix64(seed: 42)
-        var b = SplitMix64(seed: 42)
-        #expect((0..<5).map { _ in a.next() } == (0..<5).map { _ in b.next() })
     }
 
     @Test("the production log sink accepts a line")

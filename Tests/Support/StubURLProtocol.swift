@@ -1,3 +1,4 @@
+#if DEBUG
 import Foundation
 import os
 
@@ -56,7 +57,6 @@ public struct StubResponse: Sendable {
 /// What the stub saw of one request.
 public struct StubRequest: Sendable {
     public let url: URL
-    public let method: String
     public let headers: [String: String]
     public let cachePolicy: URLRequest.CachePolicy
     /// True when the request arrived on a `URLSessionDownloadTask`.
@@ -66,18 +66,10 @@ public struct StubRequest: Sendable {
 /// One entry of the stub's ordered log.
 public enum StubEvent: Sendable {
     case started(StubRequest)
-    case released(URL)
     /// `stopLoading` arrived; `beforeFinish` is true when the response was not complete,
     /// which is how a test sees a cancel (URLSession also stops a finished request).
     case stopped(URL, beforeFinish: Bool)
     case finished(URL)
-
-    public var url: URL {
-        switch self {
-        case .started(let request): request.url
-        case .released(let url), .stopped(let url, _), .finished(let url): url
-        }
-    }
 }
 
 /// One test's stubbed server. Its sessions carry a unique token header, so the
@@ -87,7 +79,7 @@ public final class StubServer: Sendable {
     static let tokenHeader = "X-WebFontKit-Stub-Token"
 
     public let token = UUID().uuidString
-    /// Every request's start, release, stop and finish, in order.
+    /// Every request's start, stop and finish, in order.
     public let events = AsyncRecorder<StubEvent>()
 
     private struct State {
@@ -106,8 +98,8 @@ public final class StubServer: Sendable {
         StubURLProtocol.unregister(token)
     }
 
-    /// A configuration that routes through this server. `base` defaults to `.ephemeral`.
-    public func configuration(base: URLSessionConfiguration = .ephemeral) -> URLSessionConfiguration {
+    /// A configuration that routes through this server.
+    private func configuration(base: URLSessionConfiguration) -> URLSessionConfiguration {
         let configuration = base
         configuration.protocolClasses = [StubURLProtocol.self]
         var headers = configuration.httpAdditionalHeaders ?? [:]
@@ -142,10 +134,6 @@ public final class StubServer: Sendable {
             if case .started(let request) = $0 { return request }
             return nil
         }
-    }
-
-    public func requestCount(for url: String) -> Int {
-        requests.count { $0.url.absoluteString == url }
     }
 
     /// Waits until `count` requests have started whose URL satisfies `matching`.
@@ -257,7 +245,6 @@ public final class StubURLProtocol: URLProtocol, @unchecked Sendable {
         }
         let seen = StubRequest(
             url: url,
-            method: request.httpMethod ?? "GET",
             headers: request.allHTTPHeaderFields ?? [:],
             cachePolicy: request.cachePolicy,
             isDownloadTask: task is URLSessionDownloadTask
@@ -305,7 +292,6 @@ public final class StubURLProtocol: URLProtocol, @unchecked Sendable {
         let runLoop = RunLoopBox(CFRunLoopGetCurrent())
         server.hold(url) { [self] in
             CFRunLoopPerformBlock(runLoop.runLoop, CFRunLoopMode.commonModes.rawValue) { [self] in
-                server.events.append(.released(url))
                 deliver(response, upTo: response.body.count, server: server)
             }
             CFRunLoopWakeUp(runLoop.runLoop)
@@ -361,3 +347,4 @@ private struct RunLoopBox: @unchecked Sendable {
         self.runLoop = runLoop
     }
 }
+#endif

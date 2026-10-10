@@ -6,10 +6,10 @@ protocol LogSink: Sendable {
     func log(category: String, level: OSLogType, message: String, privateValues: [String])
 }
 
-/// The unified log, subsystem `WebFontKit`.
+/// The unified log, subsystem `com.itznotabug.webfontkit`.
 struct LoggerSink: LogSink {
     func log(category: String, level: OSLogType, message: String, privateValues: [String]) {
-        let logger = Logger(subsystem: "WebFontKit", category: category)
+        let logger = Logger(subsystem: "com.itznotabug.webfontkit", category: category)
         if privateValues.isEmpty {
             logger.log(level: level, "\(message, privacy: .public)")
         } else {

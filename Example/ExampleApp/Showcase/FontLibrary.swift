@@ -16,15 +16,26 @@ final class FontLibrary {
     /// Changes when `family` is removed. A view keyed by it gets a new identity, so its
     /// `.font(web:)` loads again instead of reporting "Ready" over the system font.
     func generation(of family: String) -> Int {
-        removals[family.lowercased(), default: 0]
+        removals[family, default: 0]
     }
 
     /// Read live, so a view asking as its phase turns `.loaded` never sees the list one event
     /// behind; `fonts` is read too, so the view updates again on the next event.
     func face(_ family: String, style: FontStyle) -> DownloadedFont? {
         _ = fonts
-        return WebFonts.shared.downloaded.first {
-            $0.family.caseInsensitiveCompare(family) == .orderedSame && $0.style == style
+        return Self.storedFace(family, style: style)
+    }
+
+    /// `.loaded` for a registered face, so a view starts out drawn rather than loading.
+    /// Not observation-tracked: a starting value, read while a parent's body runs.
+    static func initialPhase(_ family: String, style: FontStyle) -> WebFontPhase {
+        storedFace(family, style: style) != nil ? .loaded : .loading
+    }
+
+    private static func storedFace(_ family: String, style: FontStyle) -> DownloadedFont? {
+        WebFonts.shared.downloaded.first {
+            // Exact, as the library matches family names.
+            $0.family == family && $0.style == style
         }
     }
 
@@ -34,7 +45,7 @@ final class FontLibrary {
         refresh()
         for await event in WebFonts.shared.events {
             if case .removed(let family) = event {
-                removals[family.lowercased(), default: 0] += 1
+                removals[family, default: 0] += 1
             }
             refresh()
         }
@@ -49,9 +60,9 @@ final class FontLibrary {
     }
 
     private func perform(_ action: () async throws -> Void) async {
+        error = nil
         do {
             try await action()
-            error = nil
         } catch let failure as WebFontError {
             error = failure
         } catch {
