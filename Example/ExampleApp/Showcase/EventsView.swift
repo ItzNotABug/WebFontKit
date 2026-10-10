@@ -10,7 +10,7 @@ final class EventLog {
         enum Stop {
             /// `remove` overtook it.
             case removed
-            /// No close came: the library sends none when every view that wanted it went away.
+            /// No close within `patience`: every view that wanted it went away, or it is still downloading.
             case unneeded
         }
 
@@ -36,11 +36,10 @@ final class EventLog {
     private(set) var entries: [Entry] = []
     /// A long session would otherwise grow the log without bound.
     static let limit = 200
-    /// How long an open load waits for its close before it counts as unneeded.
+    /// How long an open load waits for its close before its row says it hasn't finished.
     private static let patience: Duration = .seconds(60)
     /// Loads without a close yet: (family, styles) → when it started and its row.
     private var open: [String: (started: ContinuousClock.Instant, id: UUID)] = [:]
-    private var expiries: [UUID: Task<Void, Never>] = [:]
 
     func listen() async {
         for await event in WebFonts.shared.events {
@@ -60,10 +59,11 @@ final class EventLog {
         }
     }
 
-    /// Keeps loads still waiting for their close, so their rows can still close.
+    /// Keeps loads still in progress, so their rows can still close.
     func clear() {
-        let ids = Set(open.values.map(\.id))
-        entries.removeAll { !ids.contains($0.id) }
+        entries.removeAll { !$0.isOpen }
+        let kept = Set(entries.map(\.id))
+        open = open.filter { kept.contains($0.value.id) }
     }
 
     private func record(_ event: WebFontEvent) {
@@ -77,15 +77,13 @@ final class EventLog {
             let entry = Entry(event: event)
             open[key] = (now, entry.id)
             insert(entry)
-            expiries[entry.id] = Task { [weak self] in
+            Task { [weak self] in
                 try? await Task.sleep(for: Self.patience)
-                guard !Task.isCancelled else { return }
                 self?.markUnneeded(entry.id)
             }
         case .loaded(let family, let styles), .failed(let family, let styles, _):
             if let (started, id) = open.removeValue(forKey: Self.key(family, styles)),
                let index = entries.firstIndex(where: { $0.id == id }) {
-                expiries.removeValue(forKey: id)?.cancel()
                 var entry = entries.remove(at: index)
                 entry.event = event
                 entry.duration = now - started
@@ -99,7 +97,6 @@ final class EventLog {
             // An overtaken load never closes; settle its row.
             for (key, value) in open where key.hasPrefix(family.lowercased() + "|") {
                 open[key] = nil
-                expiries.removeValue(forKey: value.id)?.cancel()
                 if let index = entries.firstIndex(where: { $0.id == value.id }) {
                     var entry = entries.remove(at: index)
                     entry.stop = .removed
@@ -115,14 +112,12 @@ final class EventLog {
 
     /// Stays in `open`: a close that comes after all still settles the row.
     private func markUnneeded(_ id: UUID) {
-        expiries[id] = nil
         if let index = entries.firstIndex(where: { $0.id == id }), entries[index].isOpen {
             entries[index].stop = .unneeded
         }
     }
 
     private func discard(_ id: UUID) {
-        expiries.removeValue(forKey: id)?.cancel()
         entries.removeAll { $0.id == id }
     }
 
@@ -233,7 +228,7 @@ private struct TimelineRow: View {
                                 .lineLimit(1)
                         }
                         if let duration = entry.duration {
-                            Label(Self.format(duration), systemImage: "timer")
+                            Label(duration.brief, systemImage: "timer")
                                 .font(.caption.monospacedDigit())
                                 .foregroundStyle(.secondary)
                                 .lineLimit(1)
@@ -247,11 +242,6 @@ private struct TimelineRow: View {
         .accessibilityElement(children: .combine)
     }
 
-    private static func format(_ duration: Duration) -> String {
-        duration < .milliseconds(1) ? "< 1 ms"
-            : duration.formatted(.units(allowed: [.seconds, .milliseconds], width: .abbreviated, maximumUnitCount: 1))
-    }
-
     private struct Look {
         let symbol: String
         let color: Color
@@ -263,7 +253,7 @@ private struct TimelineRow: View {
             case .loading(let family, let styles) where stop == .removed:
                 (symbol, color, title, details) = ("minus", .secondary, "Stopped \(family)", styles.map(\.displayName) + ["Removed while loading"])
             case .loading(let family, let styles) where stop == .unneeded:
-                (symbol, color, title, details) = ("minus", .secondary, "\(family) not finished", styles.map(\.displayName) + ["No view needs it now"])
+                (symbol, color, title, details) = ("minus", .secondary, "\(family) not finished", styles.map(\.displayName) + ["No result yet"])
             case .loading(let family, let styles):
                 (symbol, color, title, details) = ("arrow.down", Theme.loading, "Loading \(family)", styles.map(\.displayName))
             case .loaded(let family, let styles):

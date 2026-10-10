@@ -8,7 +8,7 @@ struct TestHarnessView: View {
     var body: some View {
         VStack(spacing: 24) {
             Text("Hello, WebFontKit")
-                .font(web: "Lobster", size: 34) { phases.append(PhaseLabel.text($0)) }
+                .font(web: "Pacifico", size: 34) { phases.append(PhaseLabel.text($0)) }
                 .accessibilityIdentifier("greeting")
             Text(phases.joined(separator: ","))
                 .font(.footnote.monospaced())
@@ -23,7 +23,7 @@ struct TestHarnessView: View {
 /// `downloaded` lists a face only once it is registered, so "fallback" can only overcount.
 struct RaceView: View {
     let family: String
-    @MainActor private static var firstBody: String?
+    private static var firstBody: String?
 
     var body: some View {
         if Self.firstBody == nil {

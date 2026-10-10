@@ -12,7 +12,6 @@
 		15D1A90BCBAFB13F1D66D327 /* ShowcaseView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5488BEEA85C161ECA10814B5 /* ShowcaseView.swift */; };
 		189419BEFA6BE391E2510E54 /* TestMode.swift in Sources */ = {isa = PBXBuildFile; fileRef = FD0434BFFFA0BB20CFFE978D /* TestMode.swift */; };
 		60AC25642989F7E1404D709B /* FontLibrary.swift in Sources */ = {isa = PBXBuildFile; fileRef = E17E884C5C3256E954BB589D /* FontLibrary.swift */; };
-		65BF79A867CB26867681CB3A /* Fonts in Resources */ = {isa = PBXBuildFile; fileRef = 0C68E82CECC5F5BA756D8495 /* Fonts */; };
 		65F44CA142E71BCE2D479736 /* WebFontKit in Frameworks */ = {isa = PBXBuildFile; productRef = 466D51A8FE9BEB96F9CB2107 /* WebFontKit */; };
 		6E9BAB2C2F9CCD262D29CBCC /* TryView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 316B5B9A20EDEF519E4222FD /* TryView.swift */; };
 		7EA997A059CD19E2EDBF664B /* Perf in Resources */ = {isa = PBXBuildFile; fileRef = 64E5C05DAA18AADF25518ADD /* Perf */; };
@@ -40,7 +39,6 @@
 
 /* Begin PBXFileReference section */
 		0204DA622D4EC1BE227C3CF1 /* GalleryView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GalleryView.swift; sourceTree = "<group>"; };
-		0C68E82CECC5F5BA756D8495 /* Fonts */ = {isa = PBXFileReference; lastKnownFileType = folder; name = Fonts; path = ../Tests/Fixtures/Fonts; sourceTree = SOURCE_ROOT; };
 		2642BC963F6CB6646779C768 /* Components.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Components.swift; sourceTree = "<group>"; };
 		26CE1ABB1514E318E768B74A /* ExampleApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ExampleApp.swift; sourceTree = "<group>"; };
 		316B5B9A20EDEF519E4222FD /* TryView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TryView.swift; sourceTree = "<group>"; };
@@ -172,7 +170,6 @@
 		FC4E094541B307B82BCBC338 /* Fixtures */ = {
 			isa = PBXGroup;
 			children = (
-				0C68E82CECC5F5BA756D8495 /* Fonts */,
 				64E5C05DAA18AADF25518ADD /* Perf */,
 			);
 			path = Fixtures;
@@ -266,7 +263,6 @@
 			buildActionMask = 2147483647;
 			files = (
 				04C471E3B9AE3A7C771E2337 /* Assets.xcassets in Resources */,
-				65BF79A867CB26867681CB3A /* Fonts in Resources */,
 				7EA997A059CD19E2EDBF664B /* Perf in Resources */,
 				A25A78158C8BC9285E817096 /* PrivacyInfo.xcprivacy in Resources */,
 			);
@@ -325,10 +321,8 @@
 					"@executable_path/Frameworks",
 					"@loader_path/Frameworks",
 				);
-				PRODUCT_BUNDLE_IDENTIFIER = com.itznotabug.webfontkit.ExampleUITests;
+				PRODUCT_BUNDLE_IDENTIFIER = "$(BUNDLE_ID_PREFIX).ExampleUITests";
 				SDKROOT = iphoneos;
-				SWIFT_TREAT_WARNINGS_AS_ERRORS = YES;
-				SWIFT_VERSION = 6.0;
 				TARGETED_DEVICE_FAMILY = "1,2";
 				TEST_TARGET_NAME = ExampleApp;
 			};
@@ -345,10 +339,8 @@
 					"@executable_path/Frameworks",
 					"@loader_path/Frameworks",
 				);
-				PRODUCT_BUNDLE_IDENTIFIER = com.itznotabug.webfontkit.ExampleUITests;
+				PRODUCT_BUNDLE_IDENTIFIER = "$(BUNDLE_ID_PREFIX).ExampleUITests";
 				SDKROOT = iphoneos;
-				SWIFT_TREAT_WARNINGS_AS_ERRORS = YES;
-				SWIFT_VERSION = 6.0;
 				TARGETED_DEVICE_FAMILY = "1,2";
 				TEST_TARGET_NAME = ExampleApp;
 			};
@@ -426,7 +418,6 @@
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
 				CODE_SIGN_IDENTITY = "iPhone Developer";
-				CODE_SIGN_STYLE = Automatic;
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_FILE = ExampleApp/Info.plist;
 				INFOPLIST_KEY_CFBundleDisplayName = WebFontKit;
@@ -437,10 +428,8 @@
 					"$(inherited)",
 					"@executable_path/Frameworks",
 				);
-				PRODUCT_BUNDLE_IDENTIFIER = com.itznotabug.webfontkit.Example;
+				PRODUCT_BUNDLE_IDENTIFIER = "$(BUNDLE_ID_PREFIX).Example";
 				SDKROOT = iphoneos;
-				SWIFT_TREAT_WARNINGS_AS_ERRORS = YES;
-				SWIFT_VERSION = 6.0;
 				TARGETED_DEVICE_FAMILY = "1,2";
 			};
 			name = Debug;
@@ -452,7 +441,6 @@
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
 				CODE_SIGN_IDENTITY = "iPhone Developer";
-				CODE_SIGN_STYLE = Automatic;
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_FILE = ExampleApp/Info.plist;
 				INFOPLIST_KEY_CFBundleDisplayName = WebFontKit;
@@ -463,10 +451,8 @@
 					"$(inherited)",
 					"@executable_path/Frameworks",
 				);
-				PRODUCT_BUNDLE_IDENTIFIER = com.itznotabug.webfontkit.Example;
+				PRODUCT_BUNDLE_IDENTIFIER = "$(BUNDLE_ID_PREFIX).Example";
 				SDKROOT = iphoneos;
-				SWIFT_TREAT_WARNINGS_AS_ERRORS = YES;
-				SWIFT_VERSION = 6.0;
 				TARGETED_DEVICE_FAMILY = "1,2";
 			};
 			name = Release;

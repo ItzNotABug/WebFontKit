@@ -2,7 +2,8 @@ import SwiftUI
 
 /// Colours and the backdrop every screen sits on.
 enum Theme {
-    static let accent = Color(red: 0.55, green: 0.78, blue: 1.0)
+    /// The `AccentColor` asset, also the app's global tint.
+    static let accent = Color.accentColor
     static let loaded = Color(red: 0.42, green: 0.90, blue: 0.62)
     static let loading = Color(red: 1.0, green: 0.78, blue: 0.38)
     static let failed = Color(red: 1.0, green: 0.45, blue: 0.47)
@@ -15,7 +16,7 @@ struct Backdrop: View {
         ZStack {
             LinearGradient(colors: [Color(red: 0.05, green: 0.06, blue: 0.13), Color(red: 0.02, green: 0.02, blue: 0.05)],
                            startPoint: .top, endPoint: .bottom)
-            // Radial gradients rather than blurred circles: the same glow without an offscreen blur.
+            // Radial gradients: a soft glow without an offscreen blur.
             RadialGradient(colors: [Color(red: 0.25, green: 0.30, blue: 0.85).opacity(0.32), .clear],
                            center: UnitPoint(x: 0.05, y: 0.02), startRadius: 0, endRadius: 440)
             RadialGradient(colors: [Color(red: 0.75, green: 0.25, blue: 0.65).opacity(0.22), .clear],

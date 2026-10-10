@@ -1,6 +1,5 @@
 name: WebFontKitExample
 options:
-  bundleIdPrefix: com.itznotabug.webfontkit
   deploymentTarget:
     iOS: "17.0"
   createIntermediateGroups: true
@@ -16,14 +15,11 @@ targets:
   ExampleApp:
     type: application
     platform: iOS
-    configFiles: # the team comes from the gitignored Signing.local.xcconfig
+    configFiles: # the team and bundle ID prefix; Signing.xcconfig says how to set your own
       Debug: Signing.xcconfig
       Release: Signing.xcconfig
     sources:
       - path: ExampleApp
-      - path: ../Tests/Fixtures/Fonts
-        type: folder
-        buildPhase: resources
       - path: ../Tests/Fixtures/Perf
         type: folder
         buildPhase: resources
@@ -38,16 +34,13 @@ targets:
         product: WebFontKit
     settings:
       base:
-        PRODUCT_BUNDLE_IDENTIFIER: com.itznotabug.webfontkit.Example
+        PRODUCT_BUNDLE_IDENTIFIER: $(BUNDLE_ID_PREFIX).Example
         GENERATE_INFOPLIST_FILE: YES
         INFOPLIST_KEY_UIApplicationSceneManifest_Generation: YES
         ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME: AccentColor
         INFOPLIST_KEY_CFBundleDisplayName: WebFontKit
         INFOPLIST_KEY_UISupportedInterfaceOrientations_iPhone: "UIInterfaceOrientationPortrait UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight"
         INFOPLIST_KEY_UISupportedInterfaceOrientations_iPad: "UIInterfaceOrientationPortrait UIInterfaceOrientationPortraitUpsideDown UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight"
-        CODE_SIGN_STYLE: Automatic
-        SWIFT_VERSION: "6.0"
-        SWIFT_TREAT_WARNINGS_AS_ERRORS: YES
   ExampleUITests:
     type: bundle.ui-testing
     platform: iOS
@@ -60,11 +53,8 @@ targets:
       - target: ExampleApp
     settings:
       base:
-        PRODUCT_BUNDLE_IDENTIFIER: com.itznotabug.webfontkit.ExampleUITests
+        PRODUCT_BUNDLE_IDENTIFIER: $(BUNDLE_ID_PREFIX).ExampleUITests
         GENERATE_INFOPLIST_FILE: YES
-        TEST_TARGET_NAME: ExampleApp
-        SWIFT_VERSION: "6.0"
-        SWIFT_TREAT_WARNINGS_AS_ERRORS: YES
 schemes:
   # Runs the showcase as users get it: Release, for real performance on a device.
   Showcase:

@@ -168,17 +168,17 @@ enum ErrorText {
 }
 
 extension FontStyle {
-    /// "Bold italic", "Light": the CSS weight names, for people rather than numbers.
+    /// "Bold italic", "Extra light": the CSS weight names, for people rather than numbers.
     var displayName: String {
         let weight = switch self.weight {
         case ..<150: "Thin"
-        case ..<250: "ExtraLight"
+        case ..<250: "Extra light"
         case ..<350: "Light"
         case ..<450: "Regular"
         case ..<550: "Medium"
-        case ..<650: "SemiBold"
+        case ..<650: "Semibold"
         case ..<750: "Bold"
-        case ..<850: "ExtraBold"
+        case ..<850: "Extra bold"
         default: "Black"
         }
         guard isItalic else { return weight }
@@ -186,7 +186,32 @@ extension FontStyle {
     }
 }
 
-/// A capsule button on glass, its label drawn in the font it names.
+extension Duration {
+    /// One unit, as people say it: "< 1 ms", "350 ms", "2.4 secs".
+    var brief: String {
+        if self < .milliseconds(1) { return "< 1 ms" }
+        if self < .seconds(1) { return formatted(.units(allowed: [.milliseconds], width: .abbreviated)) }
+        return formatted(.units(allowed: [.seconds], width: .abbreviated, fractionalPart: .show(length: 1)))
+    }
+}
+
+/// A capsule on glass, filled with the accent when selected.
+struct ChipButtonStyle: ButtonStyle {
+    let selected: Bool
+
+    func makeBody(configuration: Configuration) -> some View {
+        configuration.label
+            .foregroundStyle(selected ? .black : .white)
+            .padding(.horizontal, 14)
+            .frame(minHeight: 44)
+            .background { if selected { Capsule().fill(Theme.accent) } }
+            .contentShape(.capsule)
+            .opacity(configuration.isPressed ? 0.7 : 1)
+            .glassCapsule()
+    }
+}
+
+/// A chip whose label is drawn in the font it names.
 struct FontChip: View {
     let family: String
     let selected: Bool
@@ -205,14 +230,8 @@ struct FontChip: View {
                         .lineLimit(1)
                         .minimumScaleFactor(0.5)
                 }
-                .foregroundStyle(selected ? .black : .white)
-                .padding(.horizontal, 16)
-                .frame(minHeight: 44)
-                .background { if selected { Capsule().fill(Theme.accent) } }
-                .contentShape(.capsule)
         }
-        .buttonStyle(.plain)
-        .glassCapsule()
+        .buttonStyle(ChipButtonStyle(selected: selected))
         .accessibilityLabel(family)
         .accessibilityHint("Previews this family")
         .accessibilityAddTraits(selected ? .isSelected : [])

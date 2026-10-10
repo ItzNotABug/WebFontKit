@@ -28,6 +28,11 @@ final class FontLibrary {
         }
     }
 
+    /// Whether the face is already registered, so a view can start out drawn rather than loading.
+    func isStored(_ family: String, style: FontStyle) -> Bool {
+        face(family, style: style) != nil
+    }
+
     /// One subscription for the app's lifetime. `downloaded` is served from memory, so
     /// refreshing on every event is cheap.
     func listen() async {
@@ -49,9 +54,9 @@ final class FontLibrary {
     }
 
     private func perform(_ action: () async throws -> Void) async {
+        error = nil
         do {
             try await action()
-            error = nil
         } catch let failure as WebFontError {
             error = failure
         } catch {

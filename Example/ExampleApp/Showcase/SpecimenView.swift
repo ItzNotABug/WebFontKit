@@ -14,7 +14,7 @@ struct SpecimenView: View {
 
     var body: some View {
         // Keyed so Retry, or removing the family elsewhere, starts the specimen over.
-        SpecimenContent(family: family) { attempt += 1 }
+        SpecimenContent(family: family, stored: library.isStored(family, style: .regular)) { attempt += 1 }
             .id(ContentID(attempt: attempt, generation: library.generation(of: family)))
             .screen(family)
             .navigationBarTitleDisplayMode(.inline)
@@ -24,12 +24,19 @@ struct SpecimenView: View {
 private struct SpecimenContent: View {
     let family: String
     let retry: () -> Void
-    @State private var phase: WebFontPhase = .loading
+    @State private var phase: WebFontPhase
+    @Environment(FontLibrary.self) private var library
     /// Fixed slots everywhere a web font draws: the fallback, the skeleton and the face differ
     /// in metrics, and none of them may move the page.
     @ScaledMetric(relativeTo: .largeTitle) private var heroHeight: CGFloat = 170
     @ScaledMetric(relativeTo: .body) private var glyphLineHeight: CGFloat = 38
     @ScaledMetric(relativeTo: .title2) private var uikitHeight: CGFloat = 44
+
+    init(family: String, stored: Bool, retry: @escaping () -> Void) {
+        self.family = family
+        self.retry = retry
+        _phase = State(initialValue: stored ? .loaded : .loading)
+    }
 
     var body: some View {
         ScrollView {
@@ -56,13 +63,12 @@ private struct SpecimenContent: View {
                 Card(title: "UIKit") {
                     UIKitLabel(postScriptName: phase == .loaded ? regularFace : nil)
                         .frame(height: uikitHeight)
-                        .redacted(reason: phase == .loading ? .placeholder : [])
                     Text("Once registered, Apple's own APIs draw it too: this is a UILabel using the face's exact PostScript name.")
                         .font(.caption).foregroundStyle(.secondary)
                 }
                 Card(title: "Styles") {
                     ForEach(StyleRow.styles, id: \.self) { style in
-                        StyleRow(family: family, style: style)
+                        StyleRow(family: family, style: style, stored: library.isStored(family, style: style))
                     }
                     Text("A style the family lacks draws its regular face.")
                         .font(.caption).foregroundStyle(.secondary)
@@ -71,8 +77,6 @@ private struct SpecimenContent: View {
             .padding(16)
         }
     }
-
-    @Environment(FontLibrary.self) private var library
 
     private var regularFace: String? {
         library.face(family, style: .regular)?.postScriptName
@@ -137,9 +141,15 @@ private struct StyleRow: View {
 
     let family: String
     let style: FontStyle
-    @State private var phase: WebFontPhase = .loading
+    @State private var phase: WebFontPhase
     @ScaledMetric(relativeTo: .caption) private var nameWidth: CGFloat = 84
     @ScaledMetric(relativeTo: .body) private var sampleHeight: CGFloat = 36
+
+    init(family: String, style: FontStyle, stored: Bool) {
+        self.family = family
+        self.style = style
+        _phase = State(initialValue: stored ? .loaded : .loading)
+    }
 
     var body: some View {
         HStack(spacing: 12) {
@@ -172,7 +182,7 @@ struct StoredFaceLine: View {
         // A style the family lacks draws its regular face; say which.
         let standIn = phase == .loaded && exact == nil && style != .regular ? library.face(family, style: .regular) : nil
         HStack(spacing: 10) {
-            Image(systemName: exact ?? standIn == nil ? "circle.dashed" : "internaldrive")
+            Image(systemName: (exact ?? standIn) == nil ? "circle.dashed" : "internaldrive")
                 .accessibilityHidden(true)
             Text(text(exact: exact, standIn: standIn))
                 .lineLimit(1)
@@ -186,7 +196,7 @@ struct StoredFaceLine: View {
 
     private func text(exact: DownloadedFont?, standIn: DownloadedFont?) -> String {
         if let exact {
-            return "\(exact.postScriptName) · \(ByteCountFormatter.string(fromByteCount: Int64(exact.byteCount), countStyle: .file))"
+            return "\(exact.postScriptName) · \(Int64(exact.byteCount).formatted(.byteCount(style: .file)))"
         }
         if let standIn {
             return "No \(style.displayName.lowercased()) face · \(standIn.postScriptName) stands in"
@@ -218,4 +228,10 @@ private struct UIKitLabel: UIViewRepresentable {
         label.font = UIFontMetrics(forTextStyle: .title2).scaledFont(for: font)
     }
 
+    /// The offered width, never the text's own, so a wide face can't widen the card.
+    func sizeThatFits(_ proposal: ProposedViewSize, uiView label: UILabel, context: Context) -> CGSize? {
+        guard let width = proposal.width, width.isFinite else { return nil }
+        let height = label.sizeThatFits(CGSize(width: width, height: .greatestFiniteMagnitude)).height
+        return CGSize(width: width, height: height)
+    }
 }
