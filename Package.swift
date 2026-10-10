@@ -17,7 +17,7 @@ let package = Package(
     targets: [
         .target(
             name: "WebFontKit",
-            resources: [.copy("PrivacyInfo.xcprivacy")]
+            resources: [.copy("PrivacyInfo.xcprivacy"), .copy("Resources/GoogleFonts.catalog")]
         ),
         .target(
             name: "WebFontKitTestSupport",
