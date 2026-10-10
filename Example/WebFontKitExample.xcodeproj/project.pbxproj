@@ -14,7 +14,7 @@
 		60AC25642989F7E1404D709B /* FontLibrary.swift in Sources */ = {isa = PBXBuildFile; fileRef = E17E884C5C3256E954BB589D /* FontLibrary.swift */; };
 		65F44CA142E71BCE2D479736 /* WebFontKit in Frameworks */ = {isa = PBXBuildFile; productRef = 466D51A8FE9BEB96F9CB2107 /* WebFontKit */; };
 		6E9BAB2C2F9CCD262D29CBCC /* TryView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 316B5B9A20EDEF519E4222FD /* TryView.swift */; };
-		7EA997A059CD19E2EDBF664B /* Perf in Resources */ = {isa = PBXBuildFile; fileRef = 64E5C05DAA18AADF25518ADD /* Perf */; };
+		704B020DEA9052A3CE641230 /* Perf in Resources */ = {isa = PBXBuildFile; fileRef = D72EBA681314B17E08F70401 /* Perf */; };
 		8C964030592A54F379F588DC /* ExampleApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = 26CE1ABB1514E318E768B74A /* ExampleApp.swift */; };
 		9BF2A9C6D511A8ACB1546669 /* LibraryView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8B8E3D10637067864CC704D9 /* LibraryView.swift */; };
 		9CE702F69D60FB9BF7E7BD7C /* Theme.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3400B8E73A3079651751BB38 /* Theme.swift */; };
@@ -45,21 +45,21 @@
 		3400B8E73A3079651751BB38 /* Theme.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Theme.swift; sourceTree = "<group>"; };
 		5488BEEA85C161ECA10814B5 /* ShowcaseView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ShowcaseView.swift; sourceTree = "<group>"; };
 		5CEC7AA21C8EF5A66B898C64 /* TestViews.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TestViews.swift; sourceTree = "<group>"; };
-		64E5C05DAA18AADF25518ADD /* Perf */ = {isa = PBXFileReference; lastKnownFileType = folder; name = Perf; path = ../Tests/Fixtures/Perf; sourceTree = SOURCE_ROOT; };
 		82395E65C7D6D4A96A099EC9 /* ExampleUITests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ExampleUITests.swift; sourceTree = "<group>"; };
 		8B8E3D10637067864CC704D9 /* LibraryView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LibraryView.swift; sourceTree = "<group>"; };
 		8BDB889844743D2E2E4EE53D /* AboutView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AboutView.swift; sourceTree = "<group>"; };
-		9F3686E13F53892ECAB4C57E /* WebFontKit */ = {isa = PBXFileReference; lastKnownFileType = folder; name = WebFontKit; path = ..; sourceTree = SOURCE_ROOT; };
+		918989BC6162E844076663C0 /* Signing.xcconfig */ = {isa = PBXFileReference; lastKnownFileType = text.xcconfig; path = Signing.xcconfig; sourceTree = "<group>"; };
 		A659B0A30B524CF99C8CE85E /* ExampleApp.app */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = wrapper.application; path = ExampleApp.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		AD0D3579832DD571F340991C /* ExampleUITests.xctest */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = wrapper.cfbundle; path = ExampleUITests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 		B2F4563E4D692FB5A9CFB046 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist; path = Info.plist; sourceTree = "<group>"; };
 		BE7F1D87F2C9257E9E465B7D /* EventsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = EventsView.swift; sourceTree = "<group>"; };
 		D533F33BD42A7F57308F33D6 /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
+		D72EBA681314B17E08F70401 /* Perf */ = {isa = PBXFileReference; lastKnownFileType = folder; name = Perf; path = ../Tests/Fixtures/Perf; sourceTree = SOURCE_ROOT; };
 		D7DFFBC7CE77477019718480 /* PrivacyInfo.xcprivacy */ = {isa = PBXFileReference; path = PrivacyInfo.xcprivacy; sourceTree = "<group>"; };
-		DF879B320106A12A55B26EEF /* Signing.xcconfig */ = {isa = PBXFileReference; lastKnownFileType = text.xcconfig; path = Signing.xcconfig; sourceTree = "<group>"; };
 		E17E884C5C3256E954BB589D /* FontLibrary.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FontLibrary.swift; sourceTree = "<group>"; };
 		E71A77597E3CAA8346153294 /* SpecimenView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SpecimenView.swift; sourceTree = "<group>"; };
 		FD0434BFFFA0BB20CFFE978D /* TestMode.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TestMode.swift; sourceTree = "<group>"; };
+		FDE71B2C54C721C3A25310AC /* WebFontKit-split */ = {isa = PBXFileReference; lastKnownFileType = folder; name = "WebFontKit-split"; path = ..; sourceTree = SOURCE_ROOT; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -83,6 +83,30 @@
 			name = Products;
 			sourceTree = "<group>";
 		};
+		460EFFF783F29C6A37D36978 /* Fixtures */ = {
+			isa = PBXGroup;
+			children = (
+				D72EBA681314B17E08F70401 /* Perf */,
+			);
+			path = Fixtures;
+			sourceTree = "<group>";
+		};
+		5C3F36CAD04D50E7D691E9D8 /* Tests */ = {
+			isa = PBXGroup;
+			children = (
+				460EFFF783F29C6A37D36978 /* Fixtures */,
+			);
+			path = Tests;
+			sourceTree = "<group>";
+		};
+		62351B34212338166858B36C /* Example */ = {
+			isa = PBXGroup;
+			children = (
+				918989BC6162E844076663C0 /* Signing.xcconfig */,
+			);
+			path = Example;
+			sourceTree = "<group>";
+		};
 		7D93FAEA3D8E123E2DBCCDB2 /* ExampleApp */ = {
 			isa = PBXGroup;
 			children = (
@@ -103,41 +127,15 @@
 				7D93FAEA3D8E123E2DBCCDB2 /* ExampleApp */,
 				EB67E7FE1AAD8487E19F44A9 /* ExampleUITests */,
 				B08D7D17D7F207D54525C724 /* Packages */,
-				A3155D961FC059A77B44B01B /* WebFontKit */,
+				BCF397743243EBEBB489CD80 /* WebFontKit-split */,
 				44DBDFCC1DCD617DE4D2AC35 /* Products */,
 			);
-			sourceTree = "<group>";
-		};
-		A3155D961FC059A77B44B01B /* WebFontKit */ = {
-			isa = PBXGroup;
-			children = (
-				A95C21D6ED6DDB948666C311 /* Example */,
-				AE8E9FED1C154B2C18910ADB /* Tests */,
-			);
-			name = WebFontKit;
-			path = ..;
-			sourceTree = "<group>";
-		};
-		A95C21D6ED6DDB948666C311 /* Example */ = {
-			isa = PBXGroup;
-			children = (
-				DF879B320106A12A55B26EEF /* Signing.xcconfig */,
-			);
-			path = Example;
-			sourceTree = "<group>";
-		};
-		AE8E9FED1C154B2C18910ADB /* Tests */ = {
-			isa = PBXGroup;
-			children = (
-				FC4E094541B307B82BCBC338 /* Fixtures */,
-			);
-			path = Tests;
 			sourceTree = "<group>";
 		};
 		B08D7D17D7F207D54525C724 /* Packages */ = {
 			isa = PBXGroup;
 			children = (
-				9F3686E13F53892ECAB4C57E /* WebFontKit */,
+				FDE71B2C54C721C3A25310AC /* WebFontKit-split */,
 			);
 			name = Packages;
 			sourceTree = "<group>";
@@ -159,20 +157,22 @@
 			path = Showcase;
 			sourceTree = "<group>";
 		};
+		BCF397743243EBEBB489CD80 /* WebFontKit-split */ = {
+			isa = PBXGroup;
+			children = (
+				62351B34212338166858B36C /* Example */,
+				5C3F36CAD04D50E7D691E9D8 /* Tests */,
+			);
+			name = "WebFontKit-split";
+			path = ..;
+			sourceTree = "<group>";
+		};
 		EB67E7FE1AAD8487E19F44A9 /* ExampleUITests */ = {
 			isa = PBXGroup;
 			children = (
 				82395E65C7D6D4A96A099EC9 /* ExampleUITests.swift */,
 			);
 			path = ExampleUITests;
-			sourceTree = "<group>";
-		};
-		FC4E094541B307B82BCBC338 /* Fixtures */ = {
-			isa = PBXGroup;
-			children = (
-				64E5C05DAA18AADF25518ADD /* Perf */,
-			);
-			path = Fixtures;
 			sourceTree = "<group>";
 		};
 /* End PBXGroup section */
@@ -263,7 +263,7 @@
 			buildActionMask = 2147483647;
 			files = (
 				04C471E3B9AE3A7C771E2337 /* Assets.xcassets in Resources */,
-				7EA997A059CD19E2EDBF664B /* Perf in Resources */,
+				704B020DEA9052A3CE641230 /* Perf in Resources */,
 				A25A78158C8BC9285E817096 /* PrivacyInfo.xcprivacy in Resources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
@@ -312,7 +312,7 @@
 /* Begin XCBuildConfiguration section */
 		1F49280BF0E3E6331CED5ECD /* Release */ = {
 			isa = XCBuildConfiguration;
-			baseConfigurationReference = DF879B320106A12A55B26EEF /* Signing.xcconfig */;
+			baseConfigurationReference = 918989BC6162E844076663C0 /* Signing.xcconfig */;
 			buildSettings = {
 				BUNDLE_LOADER = "$(TEST_HOST)";
 				GENERATE_INFOPLIST_FILE = YES;
@@ -330,7 +330,7 @@
 		};
 		522603EB87EBD39DC2AE4359 /* Debug */ = {
 			isa = XCBuildConfiguration;
-			baseConfigurationReference = DF879B320106A12A55B26EEF /* Signing.xcconfig */;
+			baseConfigurationReference = 918989BC6162E844076663C0 /* Signing.xcconfig */;
 			buildSettings = {
 				BUNDLE_LOADER = "$(TEST_HOST)";
 				GENERATE_INFOPLIST_FILE = YES;
@@ -413,7 +413,7 @@
 		};
 		710C81A5EAEE40C89E9BFBDF /* Debug */ = {
 			isa = XCBuildConfiguration;
-			baseConfigurationReference = DF879B320106A12A55B26EEF /* Signing.xcconfig */;
+			baseConfigurationReference = 918989BC6162E844076663C0 /* Signing.xcconfig */;
 			buildSettings = {
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
@@ -436,7 +436,7 @@
 		};
 		92A6958A1AE389C23AE83D2B /* Release */ = {
 			isa = XCBuildConfiguration;
-			baseConfigurationReference = DF879B320106A12A55B26EEF /* Signing.xcconfig */;
+			baseConfigurationReference = 918989BC6162E844076663C0 /* Signing.xcconfig */;
 			buildSettings = {
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;

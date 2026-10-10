@@ -12,18 +12,18 @@ final class PerformanceTests: XCTestCase {
             .filter { $0.hasSuffix(".ttf") }.sorted().map { "Perf/\($0)" }
     }
 
-    /// The 20 Perf faces stored once, under the names a load would give them.
-    private static let template: TempDirectory = {
+    /// The 20 Perf faces, stored under the names a load would give them.
+    private static func storePerfTemplate() throws -> TempDirectory {
         let directory = TempDirectory()
-        for fixture in try! perfFixtures() {
+        for fixture in try perfFixtures() {
             let family = String(URL(fileURLWithPath: fixture).deletingPathExtension().lastPathComponent.dropLast("-Regular".count))
-            _ = try! Fixtures.storeFont(fixture, family: family, in: directory.store, version: "v1")
+            _ = try Fixtures.storeFont(fixture, family: family, in: directory.store, version: "v1")
         }
         return directory
-    }()
+    }
 
     /// Copies, at new paths: CoreText has read none of them, so warm-up is measured cold.
-    private static func storePerfFaces(in directory: TempDirectory) throws {
+    private static func storePerfFaces(from template: TempDirectory, in directory: TempDirectory) throws {
         try FileManager.default.createDirectory(at: directory.store, withIntermediateDirectories: true)
         for file in try FileManager.default.contentsOfDirectory(at: template.store, includingPropertiesForKeys: nil) {
             try FileManager.default.copyItem(at: file, to: directory.store.appending(component: file.lastPathComponent))
@@ -69,11 +69,12 @@ final class PerformanceTests: XCTestCase {
 
     func testWarmUpOfTwentyFonts() throws {
         XCTAssertEqual(try Self.perfFixtures().count, 20)
+        let template = try Self.storePerfTemplate()
         let options = XCTMeasureOptions()
         options.invocationOptions = [.manuallyStart, .manuallyStop]
         measure(metrics: [XCTClockMetric()], options: options) {
             let directory = TempDirectory()
-            let stored = Result { try Self.storePerfFaces(in: directory) }
+            let stored = Result { try Self.storePerfFaces(from: template, in: directory) }
             let registry = Registry(registrar: CoreTextRegistrar(), files: DiskFileOperations(), logSink: RecordingLogSink())
             let store = Store(directory: directory.store, files: DiskFileOperations())
             // Every iteration starts and stops, whatever throws, so XCTest reports only the real failure.

@@ -1,7 +1,7 @@
 # Shared helpers for build.sh, verify.sh and CI. Source it; don't run it.
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-WORK="$ROOT/.build/logs"
+WORK="${WEBFONTKIT_WORK_DIR:-$ROOT/.build/logs}"
 mkdir -p "$WORK"
 
 log() { printf '\n==> %s\n' "$*"; }

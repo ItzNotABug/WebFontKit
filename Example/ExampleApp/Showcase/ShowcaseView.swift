@@ -15,7 +15,7 @@ struct ShowcaseView: View {
     @State private var library = FontLibrary()
     @State private var events = EventLog()
     @State private var screen = Screen.atLaunch
-    @State private var tryModel = TryModel { FontLibrary.isStored($0, style: .regular) }
+    @State private var tryModel = TryModel()
 
     var body: some View {
         TabView(selection: $screen) {

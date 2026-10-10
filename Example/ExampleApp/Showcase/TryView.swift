@@ -28,14 +28,15 @@ final class TryModel {
 
     private let defaults: UserDefaults
 
-    /// `isStored` tells whether a family's regular face is registered, so the status is right on the first frame.
-    init(defaults: UserDefaults = .standard, isStored: (String) -> Bool) {
+    init(defaults: UserDefaults = .standard) {
         self.defaults = defaults
         let family = defaults.string(forKey: "try.family") ?? "Lobster"
         self.family = family
         input = family
         sample = defaults.string(forKey: "try.sample") ?? Self.defaultSample
-        phase = isStored(family) ? .loaded : .loading
+        phase = .loading
+        // A stored face is ready on the first frame.
+        phase = FontLibrary.initialPhase(family, style: style)
     }
 
     /// The style the preview asks for, as the library names it.
@@ -58,17 +59,16 @@ final class TryModel {
         phase == .loading ? nil : "\(family): \(phase.label)"
     }
 
-    /// `stored` is whether the new family's face is already registered: a stored one is ready at once.
-    func submit(stored: Bool) {
+    func submit() {
         let name = pendingFamily
         guard !name.isEmpty, name != family else { return }
         family = name
-        phase = stored ? .loaded : .loading
+        phase = FontLibrary.initialPhase(name, style: style)
     }
 
-    func choose(_ name: String, stored: Bool) {
+    func choose(_ name: String) {
         input = name
-        submit(stored: stored)
+        submit()
     }
 
     func retry() {
@@ -208,7 +208,7 @@ private struct FamilyCard: View {
                     HStack(spacing: 10) {
                         ForEach(TryModel.suggestions, id: \.self) { name in
                             FontChip(family: name, selected: name == model.family) {
-                                model.choose(name, stored: FontLibrary.isStored(name, style: model.style))
+                                model.choose(name)
                             }
                         }
                     }
@@ -219,7 +219,7 @@ private struct FamilyCard: View {
     }
 
     private func submit() {
-        model.submit(stored: FontLibrary.isStored(model.pendingFamily, style: model.style))
+        model.submit()
     }
 }
 

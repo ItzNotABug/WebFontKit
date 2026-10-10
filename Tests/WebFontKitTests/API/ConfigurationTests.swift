@@ -67,6 +67,7 @@ struct ConfigurationTests {
         let directory = TempDirectory()
         WebFonts.shared.configure(WebFonts.Configuration(storage: .persistent, directory: directory.url))
         await WebFonts.shared.waitForWarmUp()
+        #expect(WebFonts.shared.startedWarmUps == 1, "only the configured directory was warmed")
 
         let warmed = WebFonts.shared.state.withLock { $0.current.directory }
         #expect(warmed.path == directory.store.path)

@@ -19,7 +19,7 @@ public struct FontStyle: Hashable, Sendable {
     /// ```
     public let isItalic: Bool
 
-    /// Creates a style; the weight must be a multiple of 100 from 100 to 900.
+    /// Creates a style. The weight must be a multiple of 100 from 100 to 900; any other traps.
     ///
     /// ```swift
     /// let lightItalic = FontStyle(weight: 300, italic: true)

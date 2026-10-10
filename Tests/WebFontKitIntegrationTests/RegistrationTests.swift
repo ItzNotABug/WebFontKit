@@ -158,6 +158,19 @@ extension IntegrationTests {
             _ = try await registry.remove(family: nil, directories: [store.directory])
         }
 
+        @Test("a marker's attribute and backup exclusion survive its rename, in an App Group container when there is one")
+        func markerAttributeSurvivesRename() throws {
+            let container = FileManager.default.containerURL(forSecurityApplicationGroupIdentifier: "group.com.webfontkit.tests")
+            let target = Store(directory: container?.appending(component: "WebFontKit") ?? store.directory, files: DiskFileOperations())
+            try target.files.createDirectory(at: target.directory)
+            try target.writeMarker(family: "Noto Sans Kannada", style: .regular, postScriptName: "NotoSansKannada-Regular")
+            let marker = target.url(for: "Noto%20Sans%20Kannada@400n@system.wfkmark")
+            defer { try? FileManager.default.removeItem(at: marker) }
+            #expect(try Data(contentsOf: marker).isEmpty)
+            #expect(target.markerName(at: marker) == "NotoSansKannada-Regular")
+            #expect(try marker.resourceValues(forKeys: [.isExcludedFromBackupKey]).isExcludedFromBackup == true)
+        }
+
         @MainActor
         @Test("with the four Lato faces registered, the family name reaches regular and bold")
         func lookupByFamilyName() async throws {

@@ -61,7 +61,7 @@ struct GalleryView: View {
                 LazyVGrid(columns: [GridItem(.adaptive(minimum: typeSize.isAccessibilitySize ? 300 : 160), spacing: 14)], spacing: 14) {
                     ForEach(Self.families, id: \.self) { family in
                         NavigationLink(value: family) {
-                            GalleryCard(family: family, stored: FontLibrary.isStored(family, style: .regular))
+                            GalleryCard(family: family)
                                 .id(library.generation(of: family))
                         }
                         .buttonStyle(PressableCardStyle())
@@ -120,9 +120,9 @@ struct GalleryCard: View {
     @ScaledMetric(relativeTo: .body) private var cardHeight: CGFloat = 160
 
     /// A stored face starts drawn, with no skeleton to fade out.
-    init(family: String, stored: Bool) {
+    init(family: String) {
         self.family = family
-        _phase = State(initialValue: stored ? .loaded : .loading)
+        _phase = State(initialValue: FontLibrary.initialPhase(family, style: .regular))
     }
 
     var body: some View {

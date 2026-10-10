@@ -26,10 +26,10 @@ final class FontLibrary {
         return Self.storedFace(family, style: style)
     }
 
-    /// Whether the face is already registered, so a view can start out drawn rather than loading.
+    /// `.loaded` for a registered face, so a view starts out drawn rather than loading.
     /// Not observation-tracked: a starting value, read while a parent's body runs.
-    static func isStored(_ family: String, style: FontStyle) -> Bool {
-        storedFace(family, style: style) != nil
+    static func initialPhase(_ family: String, style: FontStyle) -> WebFontPhase {
+        storedFace(family, style: style) != nil ? .loaded : .loading
     }
 
     private static func storedFace(_ family: String, style: FontStyle) -> DownloadedFont? {

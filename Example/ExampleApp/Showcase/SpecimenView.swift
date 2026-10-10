@@ -14,7 +14,7 @@ struct SpecimenView: View {
 
     var body: some View {
         // Keyed so Retry, or removing the family elsewhere, starts the specimen over.
-        SpecimenContent(family: family, stored: FontLibrary.isStored(family, style: .regular)) { attempt += 1 }
+        SpecimenContent(family: family) { attempt += 1 }
             .id(ContentID(attempt: attempt, generation: library.generation(of: family)))
             .screen(family)
             .navigationBarTitleDisplayMode(.inline)
@@ -32,10 +32,10 @@ private struct SpecimenContent: View {
     @ScaledMetric(relativeTo: .body) private var glyphLineHeight: CGFloat = 38
     @ScaledMetric(relativeTo: .title2) private var uikitHeight: CGFloat = 44
 
-    init(family: String, stored: Bool, retry: @escaping () -> Void) {
+    init(family: String, retry: @escaping () -> Void) {
         self.family = family
         self.retry = retry
-        _phase = State(initialValue: stored ? .loaded : .loading)
+        _phase = State(initialValue: FontLibrary.initialPhase(family, style: .regular))
     }
 
     var body: some View {
@@ -76,7 +76,7 @@ private struct SpecimenContent: View {
                 }
                 Card(title: "Styles") {
                     ForEach(StyleRow.styles, id: \.self) { style in
-                        StyleRow(family: family, style: style, stored: FontLibrary.isStored(family, style: style))
+                        StyleRow(family: family, style: style)
                     }
                     Text("A style the family lacks draws its regular face.")
                         .font(.caption).foregroundStyle(.secondary)
@@ -153,10 +153,10 @@ private struct StyleRow: View {
     @ScaledMetric(relativeTo: .caption) private var nameWidth: CGFloat = 84
     @ScaledMetric(relativeTo: .body) private var sampleHeight: CGFloat = 36
 
-    init(family: String, style: FontStyle, stored: Bool) {
+    init(family: String, style: FontStyle) {
         self.family = family
         self.style = style
-        _phase = State(initialValue: stored ? .loaded : .loading)
+        _phase = State(initialValue: FontLibrary.initialPhase(family, style: style))
     }
 
     var body: some View {
