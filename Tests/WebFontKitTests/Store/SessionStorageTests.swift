@@ -21,7 +21,7 @@ struct SessionStorageTests {
         for pid in [own, 1, 99_999_999] {
             let folder = StoreLocation.sessionDirectory(root: directory.url, pid: pid)
             try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
-            try Data().write(to: folder.appendingPathComponent(StoredFileName.font(family: "Lobster", style: .regular, cacheKey: "k", version: nil)))
+            try Data().write(to: folder.appending(component: StoredFileName.font(family: "Lobster", style: .regular, cacheKey: "k", version: nil)))
         }
 
         let deleted = try StoreLocation.sweepSessionFolders(root: directory.url, files: files)
@@ -29,8 +29,8 @@ struct SessionStorageTests {
         #expect(deleted == [99_999_999])
         let root = StoreLocation.sessionRoot(root: directory.url)
         #expect(directory.fileNames(in: root).sorted() == ["1", String(own)].sorted())
-        #expect(directory.fileNames(in: root.appendingPathComponent("1")).count == 1)
-        #expect(directory.fileNames(in: root.appendingPathComponent(String(own))).isEmpty)
+        #expect(directory.fileNames(in: root.appending(component: "1")).count == 1)
+        #expect(directory.fileNames(in: root.appending(component: String(own))).isEmpty)
     }
 
     @Test("kill reports a missing pid as dead and pid 1 as alive")

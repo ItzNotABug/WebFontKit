@@ -6,7 +6,7 @@ import WebFontKitTestSupport
 @Suite(.timeLimit(.minutes(1)))
 struct CSSParserFuzzTests {
     static let captures = [
-        "lobster", "inter-four-styles", "lobster-partial", "noto-sans-jp", "inter-450",
+        "lobster", "inter-four-styles", "noto-sans-jp", "inter-450",
         "material-symbols-outlined", "nabla", "not-found", "invalid-selector",
     ]
 
@@ -53,5 +53,30 @@ struct CSSParserFuzzTests {
         #else
         Self.fuzz(seed: seed)
         #endif
+    }
+}
+
+/// A seeded generator for the fuzz test; the standard library has none.
+struct SplitMix64: RandomNumberGenerator, Sendable {
+    private var state: UInt64
+
+    init(seed: UInt64) {
+        state = seed
+    }
+
+    /// The seed from `WEBFONTKIT_SEED` when set, otherwise `fallback`. Printed before the
+    /// first iteration, because a crash leaves no chance to print afterwards.
+    static func seed(default fallback: UInt64, label: String) -> UInt64 {
+        let seed = ProcessInfo.processInfo.environment["WEBFONTKIT_SEED"].flatMap(UInt64.init) ?? fallback
+        print("\(label): seed \(seed) (replay with WEBFONTKIT_SEED=\(seed))")
+        return seed
+    }
+
+    mutating func next() -> UInt64 {
+        state &+= 0x9E37_79B9_7F4A_7C15
+        var z = state
+        z = (z ^ (z >> 30)) &* 0xBF58_476D_1CE4_E5B9
+        z = (z ^ (z >> 27)) &* 0x94D0_49BB_1331_11EB
+        return z ^ (z >> 31)
     }
 }

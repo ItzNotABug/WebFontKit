@@ -12,14 +12,6 @@ struct LoaderLifecycleTests {
         fonts.state.withLock { $0.jobs.isEmpty && $0.calls.isEmpty && $0.resolves.isEmpty && $0.closes.isEmpty }
     }
 
-    /// Awaits every resolve and fetch in flight; their tasks are attached before a call parks.
-    static func workDone(_ fonts: WebFonts) async {
-        let tasks = fonts.state.withLock { state in
-            state.resolves.values.compactMap(\.task) + state.jobs.values.compactMap(\.task)
-        }
-        for task in tasks { await task.value }
-    }
-
     @Test("a source that throws CancellationError without being cancelled ends the load")
     func uncancelledSourceCancellation() async throws {
         let harness = Harness()
@@ -47,7 +39,8 @@ struct LoaderLifecycleTests {
         let harness = Harness()
         let fonts = harness.makeFonts(source: TestDataSource { _ in throw WebFontError.offline })
         try await harness.warmUp(fonts)
-        fonts.hooks.beforePark = { await Self.workDone(fonts) }
+        // The fetch task is attached before the call parks, so this waits for it to fail.
+        fonts.hooks.beforePark = { await fonts.quiesce(family: "Lobster") }
 
         await #expect(throws: WebFontError.offline) { try await fonts.load("Lobster") }
         #expect(Self.settled(fonts))
@@ -56,12 +49,12 @@ struct LoaderLifecycleTests {
     @Test("a call that will fail on a missing style starts no download, even when CSS2 answers before it parks")
     func noDownloadBeforeDecided() async throws {
         let harness = Harness()
-        harness.serveGoogle()
+        harness.server.serveGoogle()
         let fonts = harness.makeFonts()
         try await harness.warmUp(fonts)
         let started = Locked(false)
         fonts.hooks.beforePark = {
-            for task in fonts.state.withLock({ $0.resolves.values.compactMap(\.task) }) { await task.value }
+            await fonts.quiesce(family: "Lobster")
             let fetching = fonts.state.withLock { $0.jobs.values.contains { if case .fetching = $0.stage { true } else { false } } }
             started.withLock { $0 = fetching }
         }
@@ -91,22 +84,50 @@ struct LoaderLifecycleTests {
         #expect(Self.settled(fonts))
     }
 
-    @Test("a shared job is dropped after its commit, whichever leaves last: the commit or its last waiter", arguments: 0..<20)
-    func sharedJobDropped(run: Int) async throws {
+    enum LastToLeave: String, Sendable, CaseIterable {
+        /// The bold commit finishes while `both` still waits on its regular file.
+        case waiter
+        /// `both` withdraws from the bold job while its commit is held at register.
+        case commit
+    }
+
+    @Test(
+        "a shared job is dropped after its commit, whichever leaves last: the commit or its last waiter",
+        arguments: LastToLeave.allCases
+    )
+    func sharedJobDropped(last: LastToLeave) async throws {
         let harness = Harness()
-        harness.serveGoogle(holdFiles: true)
+        harness.server.serveGoogle(holdFiles: true)
         let fonts = harness.makeFonts()
         try await harness.warmUp(fonts)
         let joins = harness.joins(on: fonts)
+        let regularFile = "https://fonts.gstatic.com/s/inter/v1/400n.ttf"
+        let boldFile = "https://fonts.gstatic.com/s/inter/v1/700n.ttf"
 
         let both = Task { try await fonts.load("Inter", styles: [.regular, .bold]) }
-        // Both files held, so the release lets both through.
         _ = try await harness.server.waitForRequests(count: 2) { harness.isFontFile($0) }
         let bold = Task { try await fonts.load("Inter", styles: [.bold]) }
         _ = try await joins.wait { !$0.isEmpty }
-        harness.server.releaseAll()
-        try await both.value
-        try await bold.value
+
+        switch last {
+        case .waiter:
+            harness.server.release(boldFile)
+            try await bold.value
+            #expect(fonts.state.withLock { $0.jobs.values.contains { $0.outcome == .added && !$0.waiters.isEmpty } })
+            harness.server.release(regularFile)
+            try await both.value
+        case .commit:
+            harness.registrar.holdRegister()
+            harness.server.release(boldFile)
+            _ = try await harness.registrar.heldRegisterArrivals.wait { $0.count == 1 }
+            both.cancel()
+            await #expect(throws: CancellationError.self) { try await both.value }
+            #expect(fonts.state.withLock { $0.jobs.values.contains { $0.commit != nil && $0.waiters.isEmpty } })
+            harness.registrar.releaseRegister()
+            try await bold.value
+            harness.server.releaseAll()
+            await fonts.quiesce(family: "Inter")
+        }
 
         #expect(Self.settled(fonts))
         #expect(fonts.postScriptName(family: "Inter", style: .bold) == "Lato-Bold")
@@ -115,7 +136,7 @@ struct LoaderLifecycleTests {
     @Test("a cancelled starter owes no close once remove overtakes the commit it left to a joiner")
     func overtakenCloseSettles() async throws {
         let harness = Harness()
-        harness.serveGoogle(holdFiles: true)
+        harness.server.serveGoogle(holdFiles: true)
         let fonts = harness.makeFonts()
         let events = try await harness.warmUp(fonts)
         let joins = harness.joins(on: fonts)
@@ -135,7 +156,7 @@ struct LoaderLifecycleTests {
         harness.registrar.releaseRegister()
         await #expect(throws: CancellationError.self) { try await joiner.value }
         try await removal.value
-        await fonts.quiesce(family: "Lobster")
+        try await harness.sentinel(fonts, events, after: "Lobster")
 
         #expect(Self.settled(fonts))
         #expect(!events.elements.contains(.loaded(family: "Lobster", styles: [.regular])))

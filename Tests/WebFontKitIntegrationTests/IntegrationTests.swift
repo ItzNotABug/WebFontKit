@@ -15,7 +15,7 @@ extension IntegrationTests {
         @Test("a fixture copied into a run directory registers and unregisters for the process")
         func registersAndUnregisters() throws {
             let directory = TempDirectory()
-            let file = directory.url.appendingPathComponent("Lato-Regular.wfkfont")
+            let file = directory.url.appending(component: "Lato-Regular.wfkfont")
             try Fixtures.data(Fixtures.latoRegular).write(to: file)
 
             var error: Unmanaged<CFError>?

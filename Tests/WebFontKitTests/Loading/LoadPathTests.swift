@@ -5,14 +5,10 @@ import WebFontKitTestSupport
 
 @Suite(.timeLimit(.minutes(1)))
 struct LoadPathTests {
-    private func loadEvents(_ events: AsyncRecorder<WebFontEvent>) -> [WebFontEvent] {
-        events.elements.filter { if case .warmedUp = $0 { false } else { true } }
-    }
-
     @Test("a stale marker is deleted, logged, and the face loads normally", arguments: ["missing", "unknown"])
     func staleMarker(kind: String) async throws {
         let harness = Harness()
-        harness.serveGoogle()
+        harness.server.serveGoogle()
         let marker = harness.store.url(for: StoredFileName.marker(family: "Lobster", style: .regular))
         if kind == "missing" {
             try Data().write(to: marker)
@@ -29,7 +25,7 @@ struct LoadPathTests {
         #expect(harness.css2Requests == 1)
         #expect(harness.fileRequests == 1)
         try await events.wait { $0.contains(.loaded(family: "Lobster", styles: [.regular])) }
-        #expect(loadEvents(events) == [.loading(family: "Lobster", styles: [.regular]), .loaded(family: "Lobster", styles: [.regular])])
+        #expect(events.loadEvents == [.loading(family: "Lobster", styles: [.regular]), .loaded(family: "Lobster", styles: [.regular])])
     }
 
     @Test("a valid marker answers the load with no request and no event")
@@ -42,26 +38,28 @@ struct LoadPathTests {
         #expect(harness.server.requests.isEmpty)
         #expect(fonts.postScriptName(family: "Lobster", style: .regular) == "Helvetica")
         #expect(fonts.downloaded.isEmpty)
-        #expect(loadEvents(events).isEmpty)
+        try await harness.sentinel(fonts, events, after: "Lobster")
+        #expect(events.loadEvents.isEmpty)
     }
 
     @Test("a font another instance stored after warm-up is registered from disk with no request, silently")
     func storeLookup() async throws {
         let harness = Harness()
-        harness.serveGoogle()
+        harness.server.serveGoogle()
         let fonts = harness.makeFonts()
         let events = try await harness.warmUp(fonts)
         try harness.storeFont(Fixtures.lobster, family: "Lobster", version: "v1")
         try await fonts.load("Lobster")
         #expect(harness.server.requests.isEmpty)
         #expect(fonts.postScriptName(family: "Lobster", style: .regular) == "Lobster-Regular")
-        #expect(loadEvents(events).isEmpty)
+        try await harness.sentinel(fonts, events, after: "Lobster")
+        #expect(events.loadEvents.isEmpty)
     }
 
     @Test("remove overtakes a held commit: CancellationError, the registration undone, nothing left", arguments: [false, true])
     func removeOvertakesCommit(all: Bool) async throws {
         let harness = Harness()
-        harness.serveGoogle()
+        harness.server.serveGoogle()
         let fonts = harness.makeFonts()
         let events = try await harness.warmUp(fonts)
         harness.registrar.holdRegister()
@@ -80,13 +78,13 @@ struct LoadPathTests {
         #expect(fonts.downloaded.isEmpty)
         #expect(harness.leftovers.isEmpty)
         try await events.wait { $0.contains(.removed(family: "Lobster")) }
-        #expect(loadEvents(events) == [.loading(family: "Lobster", styles: [.regular]), .removed(family: "Lobster")])
+        #expect(events.loadEvents == [.loading(family: "Lobster", styles: [.regular]), .removed(family: "Lobster")])
     }
 
     @Test("a commit whose file remove deleted fails at register, and still throws CancellationError")
     func removeOvertakesFailingCommit() async throws {
         let harness = Harness()
-        harness.serveGoogle()
+        harness.server.serveGoogle()
         let fonts = harness.makeFonts()
         try await harness.warmUp(fonts)
         harness.registrar.holdRegister()
@@ -102,7 +100,7 @@ struct LoadPathTests {
     @Test("a load started after remove returns makes its own requests and stores once")
     func loadAfterRemove() async throws {
         let harness = Harness()
-        harness.serveGoogle()
+        harness.server.serveGoogle()
         let fonts = harness.makeFonts()
         try await harness.warmUp(fonts)
         harness.registrar.holdRegister()
@@ -163,7 +161,7 @@ struct LoadPathTests {
     @Test("a changed cache key replaces the stored face, unregistering the old file first")
     func replacement() async throws {
         let harness = Harness()
-        let source = KeyedSource()
+        let source = VersionedSource(version: "v32")
         harness.server.respondToOthers { request in
             .font(Fixtures.data(request.url!.lastPathComponent.contains("v20") ? Fixtures.lobsterV20 : Fixtures.lobster))
         }
@@ -181,18 +179,5 @@ struct LoadPathTests {
         #expect(harness.registrar.registeredURLs == [new])
         let calls = harness.registrar.calls.filter { [.register, .unregister].contains($0.method) && !$0.urls.isEmpty }.suffix(2)
         #expect(calls.map(\.method) == [.unregister, .register])
-    }
-}
-
-/// A remote source whose key, and file, carry a version the test can change.
-private final class KeyedSource: RemoteFontSource, Sendable {
-    let version = Locked("v32")
-
-    func request(for font: FontRequest) async throws -> URLRequest {
-        URLRequest(url: URL(string: "https://fonts.example.test/\(version.withLock { $0 })/\(font.family).ttf")!)
-    }
-
-    func cacheKey(for font: FontRequest) -> String {
-        "\(font.family)-\(version.withLock { $0 })"
     }
 }

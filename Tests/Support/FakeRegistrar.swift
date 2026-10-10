@@ -1,19 +1,14 @@
+#if DEBUG
 import CoreText
 import Foundation
 import os
 @testable import WebFontKit
 
-/// An in-memory stand-in for CoreText registration. It registers nothing
-/// process-wide, but reads PostScript names and glyph counts from the real
-/// files, and answers lookups of names it does not hold from real CoreText
-/// (which registers nothing either).
-///
-/// It behaves like iOS: a second file with a PostScript name it already holds
-/// gets 305, and so does a file whose name a font outside the fake answers to
-/// on iOS (a system font, or another process's registration).
+/// In-memory registration; faces are read from the real files.
+/// Like iOS, it answers 305 for a name it already holds, or one a font outside it answers to.
 public final class FakeRegistrar: FontRegistrar, Sendable {
     public enum Method: String, Sendable {
-        case register, unregister, postScriptName, openFace, activeFace, faceForFamily
+        case register, unregister, faceInfo, openFace, activeFace, faceForFamily
     }
 
     public struct Call: Sendable {
@@ -70,13 +65,6 @@ public final class FakeRegistrar: FontRegistrar, Sendable {
         state.withLock { Set($0.registered.keys) }
     }
 
-    /// The registered file that answers to `postScriptName`, if any.
-    public func registeredURL(for postScriptName: String) -> URL? {
-        state.withLock { state in
-            state.registered.first { $0.value.postScriptName == postScriptName }?.key
-        }
-    }
-
     /// Holds every later `register(urls:)` until `releaseRegister()`. A held call
     /// suspends; it never blocks a thread.
     public func holdRegister() {
@@ -129,7 +117,7 @@ public final class FakeRegistrar: FontRegistrar, Sendable {
 
     private func record(_ method: Method, urls: [URL] = [], name: String? = nil) {
         let probe = state.withLock { $0.tableProbe }
-        let call = Call(method: method, urls: urls, postScriptName: name, onMainThread: pthread_main_np() != 0, table: probe?())
+        let call = Call(method: method, urls: urls, postScriptName: name, onMainThread: Thread.isMainThread, table: probe?())
         state.withLock { $0.calls.append(call) }
     }
 
@@ -195,7 +183,7 @@ public final class FakeRegistrar: FontRegistrar, Sendable {
     }
 
     public func faceInfo(at url: URL) -> FaceInfo? {
-        record(.postScriptName, urls: [url])
+        record(.faceInfo, urls: [url])
         return CoreTextFonts.descriptorInfo(at: url)
     }
 
@@ -238,3 +226,4 @@ public final class FakeRegistrar: FontRegistrar, Sendable {
         return CoreTextFonts.faceForFamily(family)
     }
 }
+#endif

@@ -14,16 +14,7 @@ extension IntegrationTests {
         let server = StubServer()
 
         init() {
-            server.respondToOthers { request in
-                let url = request.url!.absoluteString
-                if url.contains("fonts.googleapis.com/css2") {
-                    guard url.contains("family=Lobster:ital,wght@0,400") else {
-                        return StubResponse(statusCode: 400, headers: ["Content-Type": "text/html"], body: Fixtures.css2("not-found"))
-                    }
-                    return .css(Fixtures.css2Text("lobster"))
-                }
-                return .font(Fixtures.data(Fixtures.lobster))
-            }
+            server.serveGoogle()
         }
 
         func fonts() -> WebFonts {
@@ -96,8 +87,10 @@ extension IntegrationTests {
             func width(_ view: some View, _ size: DynamicTypeSize, _ fonts: WebFonts?) -> Int { image(view, fonts: fonts, sizeCategory: size)?.width ?? 0 }
             let web = Text("Hamburgefonstiv").font(web: "Lobster", size: 24)
             let webGrowth = Double(width(web, .accessibility5, fonts)) / Double(width(web, .large, fonts))
-            let empty = WebFonts(configuration: .init(source: PreviewFontSource(behaviour: .neverAnswers)), registrar: CoreTextRegistrar(),
-                                 fileOperations: DiskFileOperations(), root: TempDirectory().url)
+            let emptyRoot = TempDirectory()
+            defer { withExtendedLifetime(emptyRoot) {} }
+            let empty = WebFonts(configuration: .init(source: PreviewFontSource(behavior: .neverAnswers)), registrar: CoreTextRegistrar(),
+                                 fileOperations: DiskFileOperations(), root: emptyRoot.url)
             let fallback = Text("Hamburgefonstiv").font(web: "Lobster", size: 24)
             let fallbackGrowth = Double(width(fallback, .accessibility5, empty)) / Double(width(fallback, .large, empty))
             #expect(webGrowth > 2)

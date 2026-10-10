@@ -2,6 +2,7 @@ import Foundation
 import os
 import Testing
 @testable import WebFontKit
+import WebFontKitTestSupport
 
 @Suite(.timeLimit(.minutes(1)))
 struct RegistrationBridgeTests {
@@ -32,10 +33,8 @@ struct RegistrationBridgeTests {
 
     @Test("failures are keyed by the caller's URL, whatever spelling CoreText reports")
     func spelling() async throws {
-        let directory = URL(fileURLWithPath: NSTemporaryDirectory()).appendingPathComponent(UUID().uuidString)
-        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
-        defer { try? FileManager.default.removeItem(at: directory) }
-        let mine = directory.appendingPathComponent("a.wfkfont")
+        let directory = TempDirectory()
+        let mine = directory.url.appending(component: "a.wfkfont")
         try Data().write(to: mine)
         let reported = mine.resolvingSymlinksInPath()
         let result = await CoreTextRegistrar.bridge([mine]) { _, handler in

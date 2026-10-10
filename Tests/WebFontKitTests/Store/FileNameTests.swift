@@ -8,7 +8,7 @@ struct FileNameTests {
     func golden() {
         let key = DefaultFontSource.default.cacheKey(for: FontRequest(family: "Lobster"))
         #expect(key == "Lobster|400|n")
-        // Written from the rules (SHA-256 of "Lobster\0" "400\0" "n\0" "Lobster|400|n"), never from the code.
+        // Worked out by hand (SHA-256 of "Lobster\0" "400\0" "n\0" "Lobster|400|n"), never from the code.
         #expect(StoredFileName.font(family: "Lobster", style: .regular, cacheKey: key, version: "v32")
             == "Lobster@400n@fd1062888b6dea6c@v32.wfkfont")
     }
@@ -19,6 +19,27 @@ struct FileNameTests {
         #expect(StoredFileName.encode("A@b/c.é") == "A%40b%2Fc%2E%C3%A9")
         #expect(StoredFileName.decode("A%40b%2Fc%2E%C3%A9") == "A@b/c.é")
         #expect(StoredFileName.decode("bad%4") == nil)
+    }
+
+    @Test(
+        "a family encodes to exactly these bytes and decodes back",
+        arguments: [
+            ("Lobster", "Lobster"),
+            ("Bebas Neue", "Bebas%20Neue"),
+            ("Été", "%C3%89t%C3%A9"),
+            ("a-b_c.d", "a%2Db%5Fc%2Ed"),
+            ("東京", "%E6%9D%B1%E4%BA%AC"),
+        ]
+    )
+    func exactEncoding(family: String, encoded: String) {
+        #expect(StoredFileName.encode(family) == encoded)
+        #expect(StoredFileName.decode(encoded) == family)
+        #expect(StoredFileName.decode(StoredFileName.encode(family)) == family)
+    }
+
+    @Test("an escape that is not two hex digits does not decode")
+    func malformedEscape() {
+        #expect(StoredFileName.decode("%G1") == nil)
     }
 
     @Test(

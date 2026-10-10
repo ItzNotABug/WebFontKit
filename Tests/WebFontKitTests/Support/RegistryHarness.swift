@@ -12,24 +12,14 @@ extension Harness {
         Registry(registrar: registrar, files: files, logSink: logSink)
     }
 
-    /// Writes a fixture into the store under the name a load would give it.
+    /// Writes a fixture into this harness's store under the name a load would give it.
     @discardableResult
     func storeFont(
         _ fixture: String, family: String, style: FontStyle = .regular,
         cacheKey: String? = nil, version: String? = nil, modified: Date? = nil
     ) throws -> StoredFace {
-        let key = cacheKey ?? TestDataSource { _ in Data() }.cacheKey(for: FontRequest(family: family, style: style))
-        let url = store.url(for: StoredFileName.font(family: family, style: style, cacheKey: key, version: version))
-        try Fixtures.data(fixture).write(to: url)
-        if let modified {
-            try FileManager.default.setAttributes([.modificationDate: modified], ofItemAtPath: url.path)
-        }
-        let info = CoreTextFonts.descriptorInfo(at: url)!
-        return StoredFace(
-            key: FaceKey(family: family, style: style), url: url,
-            keyHash: StoredFileName.keyHash(family: family, style: style, cacheKey: key),
-            postScriptName: info.postScriptName, glyphCount: info.glyphCount, familyName: info.familyName
-        )
+        try Fixtures.storeFont(fixture, family: family, style: style, in: directory.store,
+                               cacheKey: cacheKey, version: version, modified: modified)
     }
 
     /// The default `cacheKey` of any source that does not override it.

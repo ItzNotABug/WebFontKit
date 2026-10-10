@@ -34,48 +34,39 @@ extension Harness {
         return joins
     }
 
-    static let interCSS2 = CSS2.url(family: "Inter", styles: [.regular]).absoluteString
-
-    /// Serves Google's real answers for any family and style from the fixtures: Lobster
-    /// (regular only) and Inter (the four Lato faces, under gstatic-like URLs).
-    func serveGoogle(holdCSS: Bool = false, holdFiles: Bool = false) {
-        let lato: [FontStyle: String] = [.regular: Fixtures.latoRegular, .bold: Fixtures.latoBold,
-                                          .italic: Fixtures.latoItalic, .boldItalic: Fixtures.latoBoldItalic]
-        server.respondToOthers { request in
-            let url = request.url!.absoluteString
-            if url.hasPrefix("https://fonts.googleapis.com/css2"), let family = URLComponents(string: url)?.queryItems?.first?.value {
-                let name = String(family.prefix { $0 != ":" })
-                let tuples = family.split(separator: "@").last.map { $0.split(separator: ";") } ?? []
-                let styles = tuples.compactMap { tuple -> FontStyle? in
-                    let parts = tuple.split(separator: ",")
-                    guard parts.count == 2, let weight = Int(parts[1]) else { return nil }
-                    return FontStyle(weight: weight, italic: parts[0] == "1")
-                }
-                var blocks: [String] = []
-                for style in styles {
-                    let exists = name == "Inter" ? lato[style] != nil : (name == "Lobster" && style == .regular)
-                    guard exists else { continue }
-                    let file = "https://fonts.gstatic.com/s/\(name.lowercased())/v1/\(style.weight)\(style.isItalic ? "i" : "n").ttf"
-                    blocks.append("@font-face {\n  font-family: '\(name)';\n  font-style: \(style.isItalic ? "italic" : "normal");\n  font-weight: \(style.weight);\n  src: url(\(file)) format('truetype');\n}")
-                }
-                if blocks.isEmpty {
-                    return StubResponse(statusCode: 400, headers: ["Content-Type": "text/html"], body: Fixtures.css2("not-found"))
-                }
-                return .css(blocks.joined(separator: "\n"), hold: holdCSS ? .beforeResponse : .none)
-            }
-            if url.hasPrefix("https://fonts.gstatic.com/s/lobster/") {
-                return .font(Fixtures.data(Fixtures.lobster), hold: holdFiles ? .beforeResponse : .none)
-            }
-            if url.hasPrefix("https://fonts.gstatic.com/s/inter/v1/"), let style = lato.keys.first(where: { url.hasSuffix("/\($0.weight)\($0.isItalic ? "i" : "n").ttf") }) {
-                return .font(Fixtures.data(lato[style]!), hold: holdFiles ? .beforeResponse : .none)
-            }
-            return StubResponse(statusCode: 404)
-        }
+    /// Lets an absence check run only once everything owed for `family` has been emitted:
+    /// the family's work settles, then a sentinel load's `.loading` arrives behind it.
+    func sentinel(_ fonts: WebFonts, _ events: AsyncRecorder<WebFontEvent>, after family: String) async throws {
+        await fonts.quiesce(family: family)
+        let sentinel = Task { try await fonts.load(WebFontEvent.sentinelFamily) }
+        try await events.wait { $0.contains(.loading(family: WebFontEvent.sentinelFamily, styles: [.regular])) }
+        sentinel.cancel()
+        _ = try? await sentinel.value
     }
 
     func isCSS2(_ url: URL) -> Bool { url.host == "fonts.googleapis.com" }
     func isFontFile(_ url: URL) -> Bool { url.host == "fonts.gstatic.com" }
 
     var css2Requests: Int { server.requests.count { isCSS2($0.url) } }
+    func css2Requests(for family: String) -> Int {
+        server.requests.count { isCSS2($0.url) && $0.url.query?.hasPrefix("family=\(family):") == true }
+    }
     var fileRequests: Int { server.requests.count { isFontFile($0.url) } }
+}
+
+extension AsyncRecorder<WebFontEvent> {
+    /// Every event but `.warmedUp` and the sentinel's, which may still close with `.failed`.
+    var loadEvents: [WebFontEvent] {
+        elements.filter { event in
+            switch event {
+            case .warmedUp: false
+            case .loading(let family, _), .loaded(let family, _), .failed(let family, _, _), .removed(let family):
+                family != WebFontEvent.sentinelFamily
+            }
+        }
+    }
+}
+
+extension WebFontEvent {
+    static let sentinelFamily = "Roboto"
 }

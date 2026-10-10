@@ -7,7 +7,7 @@ import WebFontKitTestSupport
 @MainActor
 struct MainThreadGuardTests {
     @Test("resolve, download and validation started from the main actor make no seam call on the main thread")
-    func phaseOneEntryPoints() async throws {
+    func resolveDownloadValidateOffMain() async throws {
         #expect(pthread_main_np() != 0)
         let harness = Harness()
         harness.serveLobster()

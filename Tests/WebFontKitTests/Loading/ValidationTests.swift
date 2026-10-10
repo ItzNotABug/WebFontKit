@@ -6,7 +6,7 @@ import WebFontKitTestSupport
 @Suite(.timeLimit(.minutes(1)))
 struct ValidationTests {
     private func partial(_ harness: Harness, _ fixture: String) throws -> URL {
-        let url = harness.directory.store.appendingPathComponent(StoredFileName.partial())
+        let url = harness.directory.store.appending(component: StoredFileName.partial())
         try Fixtures.data(fixture).write(to: url)
         return url
     }
@@ -22,7 +22,9 @@ struct ValidationTests {
         let harness = Harness()
         let url = try partial(harness, fixture)
         let face = try harness.fetcher.validate(url)
-        #expect(face.partialURL == url && face.postScriptName == name && face.glyphCount == glyphs)
+        #expect(face.partialURL == url)
+        #expect(face.postScriptName == name)
+        #expect(face.glyphCount == glyphs)
         #expect(try url.resourceValues(forKeys: [.isExcludedFromBackupKey]).isExcludedFromBackup == true)
     }
 

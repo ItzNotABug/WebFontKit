@@ -5,24 +5,10 @@ import WebFontKitTestSupport
 
 @Suite(.timeLimit(.minutes(1)))
 struct EventStreamTests {
-    private func loadEvents(_ events: AsyncRecorder<WebFontEvent>) -> [WebFontEvent] {
-        events.elements.filter { if case .warmedUp = $0 { false } else { true } }
-    }
-
-    /// Proves absence: everything owed for the case arrives before the sentinel's own `.loading`.
-    /// The sentinel may still close with `.failed` before its cancel lands, so tests drop its events.
-    private func sentinel(_ fonts: WebFonts, _ harness: Harness, _ events: AsyncRecorder<WebFontEvent>, family: String) async throws {
-        await fonts.quiesce(family: family)
-        let roboto = Task { try await fonts.load("Roboto") }
-        try await events.wait { $0.contains(.loading(family: "Roboto", styles: [.regular])) }
-        roboto.cancel()
-        _ = try? await roboto.value
-    }
-
     @Test("a cancelled starter's joined load still closes with .loaded")
     func joinedSucceeds() async throws {
         let harness = Harness()
-        harness.serveGoogle(holdCSS: true)
+        harness.server.serveGoogle(holdCSS: true)
         let fonts = harness.makeFonts()
         let events = try await harness.warmUp(fonts)
 
@@ -38,7 +24,7 @@ struct EventStreamTests {
         try await b.value
         try await events.wait { $0.contains(.loaded(family: "Lobster", styles: [.regular])) }
         #expect(harness.css2Requests == 1)
-        #expect(loadEvents(events) == [.loading(family: "Lobster", styles: [.regular]), .loaded(family: "Lobster", styles: [.regular])])
+        #expect(events.loadEvents == [.loading(family: "Lobster", styles: [.regular]), .loaded(family: "Lobster", styles: [.regular])])
     }
 
     @Test("a cancelled starter's shared work that fails closes with .failed")
@@ -58,14 +44,14 @@ struct EventStreamTests {
         harness.server.releaseAll()
         await #expect(throws: WebFontError.notFound) { try await b.value }
         try await events.wait { $0.count >= 3 }
-        #expect(loadEvents(events) == [.loading(family: "Lobster", styles: [.regular]),
+        #expect(events.loadEvents == [.loading(family: "Lobster", styles: [.regular]),
                                        .failed(family: "Lobster", styles: [.regular], error: .notFound)])
     }
 
     @Test("a lone cancelled starter emits only .loading", arguments: [true, false])
     func loneCancelled(holdCSS: Bool) async throws {
         let harness = Harness()
-        harness.serveGoogle(holdCSS: holdCSS, holdFiles: !holdCSS)
+        harness.server.serveGoogle(holdCSS: holdCSS, holdFiles: !holdCSS)
         let fonts = harness.makeFonts()
         let events = try await harness.warmUp(fonts)
 
@@ -76,14 +62,14 @@ struct EventStreamTests {
         let held = harness.server.requests.last!.url.absoluteString
         try await harness.server.waitForCancel(of: held)
         harness.server.releaseAll()
-        try await sentinel(fonts, harness, events, family: "Lobster")
-        #expect(loadEvents(events).filter { !$0.isSentinel } == [.loading(family: "Lobster", styles: [.regular])])
+        try await harness.sentinel(fonts, events, after: "Lobster")
+        #expect(events.loadEvents == [.loading(family: "Lobster", styles: [.regular])])
     }
 
     @Test("the closing event carries the starter's styles")
     func startersStyles() async throws {
         let harness = Harness()
-        harness.serveGoogle(holdCSS: true)
+        harness.server.serveGoogle(holdCSS: true)
         let fonts = harness.makeFonts()
         let events = try await harness.warmUp(fonts)
 
@@ -99,14 +85,14 @@ struct EventStreamTests {
         try await b.value
         try await c.value
         try await events.wait { $0.contains(.loaded(family: "Inter", styles: [.regular, .bold])) }
-        #expect(loadEvents(events) == [.loading(family: "Inter", styles: [.regular, .bold]),
+        #expect(events.loadEvents == [.loading(family: "Inter", styles: [.regular, .bold]),
                                        .loaded(family: "Inter", styles: [.regular, .bold])])
     }
 
     @Test("remove overtakes a load in flight: CancellationError, nothing stored, .loading then .removed", arguments: [false, true])
     func removeOvertakes(all: Bool) async throws {
         let harness = Harness()
-        harness.serveGoogle(holdFiles: true)
+        harness.server.serveGoogle(holdFiles: true)
         let fonts = harness.makeFonts()
         let events = try await harness.warmUp(fonts)
 
@@ -117,13 +103,14 @@ struct EventStreamTests {
         await #expect(throws: CancellationError.self) { try await load.value }
         await fonts.quiesce(family: "Lobster")
 
-        #expect(loadEvents(events) == [.loading(family: "Lobster", styles: [.regular]), .removed(family: "Lobster")])
+        try await events.wait { $0.contains(.removed(family: "Lobster")) }
+        #expect(events.loadEvents == [.loading(family: "Lobster", styles: [.regular]), .removed(family: "Lobster")])
         #expect(harness.leftovers.isEmpty)
         #expect(fonts.postScriptName(family: "Lobster", style: .regular) == nil)
         #expect(fonts.downloaded.isEmpty)
         #expect(harness.registrar.registeredURLs.isEmpty)
 
-        harness.serveGoogle()
+        harness.server.serveGoogle()
         try await fonts.load("Lobster")
         #expect(fonts.postScriptName(family: "Lobster", style: .regular) == "Lobster-Regular")
     }
@@ -131,7 +118,7 @@ struct EventStreamTests {
     @Test("a remove of another family leaves a held load to finish")
     func removeOtherFamily() async throws {
         let harness = Harness()
-        harness.serveGoogle(holdFiles: true)
+        harness.server.serveGoogle(holdFiles: true)
         let fonts = harness.makeFonts()
         try await harness.warmUp(fonts)
         let load = Task { try await fonts.load("Inter") }
@@ -149,7 +136,7 @@ struct EventStreamTests {
         let events = try await harness.warmUp(fonts)
         try await fonts.remove("Never")
         try await events.wait { $0.contains(.removed(family: "Never")) }
-        #expect(loadEvents(events) == [.removed(family: "Never")])
+        #expect(events.loadEvents == [.removed(family: "Never")])
         #expect(harness.registrar.calls(.unregister).isEmpty)
         #expect(harness.files.calls(.delete).isEmpty)
     }
@@ -157,7 +144,7 @@ struct EventStreamTests {
     @Test("removeAll emits per family in name order, and nothing for an empty store")
     func removeAllOrder() async throws {
         let harness = Harness()
-        harness.serveGoogle()
+        harness.server.serveGoogle()
         let fonts = harness.makeFonts()
         let events = try await harness.warmUp(fonts)
         try await fonts.removeAll()
@@ -165,7 +152,7 @@ struct EventStreamTests {
         try await fonts.load("Inter")
         try await fonts.removeAll()
         try await events.wait { $0.contains(.removed(family: "Lobster")) }
-        #expect(loadEvents(events).filter { if case .removed = $0 { true } else { false } }
+        #expect(events.loadEvents.filter { if case .removed = $0 { true } else { false } }
             == [.removed(family: "Inter"), .removed(family: "Lobster")])
     }
 
@@ -192,7 +179,7 @@ struct EventStreamTests {
     @Test("the latest .warmedUp is replayed first to a later listener, and every listener gets every event")
     func replayAndListeners() async throws {
         let harness = Harness()
-        harness.serveGoogle()
+        harness.server.serveGoogle()
         try harness.storeFont(Fixtures.lobster, family: "Lobster")
         let fonts = harness.makeFonts()
         try await harness.warmUp(fonts)
@@ -222,14 +209,5 @@ struct EventStreamTests {
         }
         #expect(received.first == .removed(family: "Family44"))
         #expect(received.last == .removed(family: "Family299"))
-    }
-}
-
-private extension WebFontEvent {
-    var isSentinel: Bool {
-        switch self {
-        case .loading(let family, _), .loaded(let family, _), .failed(let family, _, _), .removed(let family): family == "Roboto"
-        case .warmedUp: false
-        }
     }
 }

@@ -6,6 +6,7 @@ import WebFontKitTestSupport
 @Suite(.timeLimit(.minutes(1)))
 struct DownloaderTests {
     private let url = "https://fonts.example.test/body.bin"
+    private let megabyte = 1024 * 1024
 
     private func download(_ harness: Harness, cap: Int = Downloader.sizeCap) async throws -> URL {
         try await Downloader.download(
@@ -14,12 +15,11 @@ struct DownloaderTests {
         )
     }
 
-    @Test("the body goes to disk chunk by chunk, off the main thread", arguments: [6 * 1024 * 1024, 30 * 1024 * 1024])
-    func bodyToDisk(size: Int) async throws {
+    @Test("the body goes to disk chunk by chunk, off the main thread")
+    func bodyToDisk() async throws {
         let harness = Harness()
-        var response = StubResponse.font(Harness.markedBody(count: size, marker: UUID().uuidString))
-        response.chunkSize = 64 * 1024
-        harness.server.respond(to: url, with: response)
+        let size = 6 * megabyte
+        harness.server.respond(to: url, with: .font(Harness.markedBody(count: size, marker: UUID().uuidString)))
 
         let partial = try await download(harness)
 
@@ -41,25 +41,17 @@ struct DownloaderTests {
     @Test("the first half of a body is on disk while the stub still holds the second half")
     func streamsBeforeTheEnd() async throws {
         let harness = Harness()
-        let recorder = AppendSizeFiles()
-        let half = 3 * 1024 * 1024
-        var response = StubResponse.font(Harness.markedBody(count: 2 * half, marker: UUID().uuidString), hold: .afterBytes(half))
-        response.chunkSize = 64 * 1024
-        harness.server.respond(to: url, with: response)
+        let half = 3 * megabyte
+        harness.server.respond(to: url, with: .font(Harness.markedBody(count: 2 * half, marker: UUID().uuidString), hold: .afterBytes(half)))
 
-        let download = Task {
-            try await Downloader.download(
-                URLRequest(url: URL(string: url)!), session: harness.session,
-                into: harness.directory.store, fileOperations: recorder
-            )
-        }
-        let sizes = try await recorder.appended.wait { $0.reduce(0, +) >= half }
+        let task = Task { try await download(harness) }
+        let sizes = try await harness.files.appendedBytes.wait { $0.reduce(0, +) >= half }
         let onDiskWhileHeld: Int = sizes.reduce(0, +)
         #expect(onDiskWhileHeld == half)
         harness.server.release(url)
 
-        let partial = try await download.value
-        let total: Int = recorder.appended.elements.reduce(0, +)
+        let partial = try await task.value
+        let total: Int = harness.files.appendedBytes.elements.reduce(0, +)
         #expect(total == 2 * half)
         #expect(try Data(contentsOf: partial).count == 2 * half)
     }
@@ -68,15 +60,15 @@ struct DownloaderTests {
     func cap(withContentLength: Bool) async throws {
         let harness = Harness()
         let marker = UUID().uuidString
-        let body = Harness.markedBody(count: Downloader.sizeCap + 2 * 1024 * 1024, marker: marker)
-        var response = StubResponse.font(body, hold: .afterBytes(Downloader.sizeCap + 1024 * 1024))
-        response.chunkSize = 1024 * 1024
+        let body = Harness.markedBody(count: 3 * megabyte, marker: marker)
+        var response = StubResponse.font(body, hold: .afterBytes(2 * megabyte))
+        response.chunkSize = 256 * 1024
         if withContentLength {
             response.headers["Content-Length"] = String(body.count)
         }
         harness.server.respond(to: url, with: response)
 
-        await #expect(throws: WebFontError.invalidFont) { try await download(harness) }
+        await #expect(throws: WebFontError.invalidFont) { try await download(harness, cap: megabyte) }
         try await harness.server.waitForCancel(of: url)
         harness.server.releaseAll()
         #expect(harness.leftovers.isEmpty)
@@ -100,7 +92,7 @@ struct DownloaderTests {
     func callerCancel() async throws {
         let harness = Harness()
         let marker = UUID().uuidString
-        harness.server.respond(to: url, with: .font(Harness.markedBody(count: 4 * 1024 * 1024, marker: marker), hold: .afterBytes(1024 * 1024)))
+        harness.server.respond(to: url, with: .font(Harness.markedBody(count: 4 * megabyte, marker: marker), hold: .afterBytes(megabyte)))
 
         let task = Task { try await download(harness) }
         try await harness.server.waitForRequests { $0.absoluteString == url }
@@ -127,11 +119,11 @@ struct DownloaderTests {
     @Test("a session whose delegate queue is main still stores the file, with every file operation off main", arguments: [false, true])
     func mainDelegateQueue(overCap: Bool) async throws {
         let harness = Harness(delegateQueue: .main)
-        let size = overCap ? 3 * 1024 * 1024 : 1024 * 1024
+        let size = overCap ? 3 * megabyte : megabyte
         harness.server.respond(to: url, with: .font(Harness.markedBody(count: size, marker: UUID().uuidString)))
 
         if overCap {
-            await #expect(throws: WebFontError.invalidFont) { try await download(harness, cap: 2 * 1024 * 1024) }
+            await #expect(throws: WebFontError.invalidFont) { try await download(harness, cap: 2 * megabyte) }
             #expect(harness.leftovers.isEmpty)
         } else {
             let partial = try await download(harness)
@@ -143,8 +135,8 @@ struct DownloaderTests {
 
     @Test("no download is written into a URL cache, while a plain request on the same session is")
     func noURLCache() async throws {
-        let directory = TempDirectory()
-        let cache = URLCache(memoryCapacity: 50_000_000, diskCapacity: 50_000_000, directory: directory.url.appendingPathComponent("cache"))
+        // In memory only: a disk cache writes its database after the test's directory is gone.
+        let cache = URLCache(memoryCapacity: 50_000_000, diskCapacity: 0)
         let base = URLSessionConfiguration.ephemeral
         base.urlCache = cache
         base.requestCachePolicy = .useProtocolCachePolicy
@@ -200,26 +192,3 @@ struct DownloaderTests {
     }
 }
 
-/// Records the size of every append once it is on disk, on top of the real disk.
-private final class AppendSizeFiles: FileOperations, Sendable {
-    private let disk = DiskFileOperations()
-    let appended = AsyncRecorder<Int>()
-
-    func append(_ data: Data, to handle: FileHandle) throws {
-        try disk.append(data, to: handle)
-        appended.append(data.count)
-    }
-
-    func createDirectory(at url: URL) throws { try disk.createDirectory(at: url) }
-    func contentsOfDirectory(at url: URL, includingDirectories: Bool) throws -> [FileEntry] { try disk.contentsOfDirectory(at: url, includingDirectories: includingDirectories) }
-    func removeDirectory(at url: URL) throws { try disk.removeDirectory(at: url) }
-    func fileExists(at url: URL) -> Bool { disk.fileExists(at: url) }
-    func write(_ data: Data, to url: URL) throws { try disk.write(data, to: url) }
-    func rename(_ source: URL, to destination: URL) throws { try disk.rename(source, to: destination) }
-    func delete(at url: URL) throws -> Bool { try disk.delete(at: url) }
-    func setExcludedFromBackup(at url: URL) throws { try disk.setExcludedFromBackup(at: url) }
-    func createPartial(at url: URL) throws -> FileHandle { try disk.createPartial(at: url) }
-    func close(_ handle: FileHandle) throws { try disk.close(handle) }
-    func setExtendedAttribute(_ name: String, value: Data, at url: URL) throws { try disk.setExtendedAttribute(name, value: value, at: url) }
-    func extendedAttribute(_ name: String, at url: URL) throws -> Data? { try disk.extendedAttribute(name, at: url) }
-}

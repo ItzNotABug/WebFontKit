@@ -1,38 +1,14 @@
+#if DEBUG
 import Foundation
-
-/// A seeded generator for the fuzz tests; the standard library has none.
-public struct SplitMix64: RandomNumberGenerator, Sendable {
-    private var state: UInt64
-
-    public init(seed: UInt64) {
-        state = seed
-    }
-
-    /// The seed from `WEBFONTKIT_SEED` when set, otherwise `fallback`. Prints it
-    /// before the caller's first iteration, because a crash leaves no chance to
-    /// print afterwards.
-    public static func seed(default fallback: UInt64, label: String) -> UInt64 {
-        let seed = ProcessInfo.processInfo.environment["WEBFONTKIT_SEED"].flatMap(UInt64.init) ?? fallback
-        print("\(label): seed \(seed) (replay with WEBFONTKIT_SEED=\(seed))")
-        return seed
-    }
-
-    public mutating func next() -> UInt64 {
-        state &+= 0x9E37_79B9_7F4A_7C15
-        var z = state
-        z = (z ^ (z >> 30)) &* 0xBF58_476D_1CE4_E5B9
-        z = (z ^ (z >> 27)) &* 0x94D0_49BB_1331_11EB
-        return z ^ (z >> 31)
-    }
-}
+@testable import WebFontKit
 
 /// A fresh directory for one test, deleted when the owner is deallocated. All
 /// of a run's directories sit under `runRoot`, which the integration suite's
 /// end-of-run check scans.
 public final class TempDirectory: Sendable {
     public static let runRoot: URL = {
-        let root = FileManager.default.temporaryDirectory
-            .appendingPathComponent("WebFontKitTestRun-\(ProcessInfo.processInfo.processIdentifier)", isDirectory: true)
+        let root = URL.temporaryDirectory
+            .appending(component: "WebFontKitTestRun-\(ProcessInfo.processInfo.processIdentifier)", directoryHint: .isDirectory)
         try? FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
         // The spelling directory listings use (`/private/var/…`); resolvingSymlinksInPath strips `/private`.
         guard let real = realpath(root.path, nil) else { return root }
@@ -43,7 +19,7 @@ public final class TempDirectory: Sendable {
     public let url: URL
 
     public init() {
-        url = Self.runRoot.appendingPathComponent(UUID().uuidString, isDirectory: true)
+        url = Self.runRoot.appending(component: UUID().uuidString, directoryHint: .isDirectory)
         try? FileManager.default.createDirectory(at: url, withIntermediateDirectories: true)
     }
 
@@ -53,7 +29,7 @@ public final class TempDirectory: Sendable {
 
     /// The `WebFontKit/` subdirectory the library keeps its files in.
     public var store: URL {
-        url.appendingPathComponent("WebFontKit", isDirectory: true)
+        url.appending(component: "WebFontKit", directoryHint: .isDirectory)
     }
 
     /// The names of the files directly inside `directory` (default: `store`), sorted.
@@ -68,7 +44,7 @@ public enum Fixtures {
     public static let root: URL = Bundle.module.url(forResource: "Fixtures", withExtension: nil)!
 
     public static func url(_ path: String) -> URL {
-        root.appendingPathComponent(path)
+        root.appending(path: path)
     }
 
     public static func data(_ path: String) -> Data {
@@ -101,11 +77,40 @@ extension Fixtures {
         let newest = names.filter { file in
             guard file.hasPrefix(name + "-") else { return false }
             return file.dropFirst(name.count + 1).first?.isNumber == true
-        }.sorted().last!
-        return try! Data(contentsOf: directory.appendingPathComponent(newest))
+        }.max()!
+        return try! Data(contentsOf: directory.appending(component: newest))
     }
 
     public static func css2Text(_ name: String) -> String {
         String(decoding: css2(name), as: UTF8.self)
     }
+
+    /// Writes a fixture into `directory` under the name a load would give it.
+    @discardableResult
+    public static func storeFont(
+        _ fixture: String, family: String, style: FontStyle = .regular, in directory: URL,
+        cacheKey: String? = nil, version: String? = nil, modified: Date? = nil
+    ) throws -> StoredFace {
+        let key = cacheKey ?? DefaultKeySource().cacheKey(for: FontRequest(family: family, style: style))
+        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        let url = directory.appending(component: StoredFileName.font(family: family, style: style, cacheKey: key, version: version))
+        try data(fixture).write(to: url)
+        if let modified {
+            try FileManager.default.setAttributes([.modificationDate: modified], ofItemAtPath: url.path)
+        }
+        guard let info = CoreTextFonts.descriptorInfo(at: url) else {
+            throw CocoaError(.fileReadCorruptFile, userInfo: [NSFilePathErrorKey: url.path])
+        }
+        return StoredFace(
+            key: FaceKey(family: family, style: style), url: url,
+            keyHash: StoredFileName.keyHash(family: family, style: style, cacheKey: key),
+            postScriptName: info.postScriptName, glyphCount: info.glyphCount, familyName: info.familyName
+        )
+    }
 }
+
+/// Any source that keeps the protocol's default cache key.
+private struct DefaultKeySource: FontSource {
+    func fetch(_ font: FontRequest) async throws -> Data { Data() }
+}
+#endif
