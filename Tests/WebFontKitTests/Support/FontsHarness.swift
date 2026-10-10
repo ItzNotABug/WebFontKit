@@ -4,10 +4,11 @@ import WebFontKitTestSupport
 
 extension Harness {
     /// A fresh, unconfigured instance on this harness's fakes, temporary root and stub session.
-    func makeFonts(source: any FontSource = .default, storage: WebFonts.Configuration.Storage = .persistent) -> WebFonts {
+    func makeFonts(source: any FontSource = .default, storage: WebFonts.Configuration.Storage = .persistent,
+                   catalog: GoogleFontsCatalog? = nil) -> WebFonts {
         WebFonts(
             configuration: WebFonts.Configuration(source: source, storage: storage, session: session),
-            registrar: registrar, fileOperations: files, root: directory.url, logSink: logSink
+            registrar: registrar, fileOperations: files, root: directory.url, logSink: logSink, catalog: catalog
         )
     }
 

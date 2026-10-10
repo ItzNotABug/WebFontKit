@@ -68,6 +68,10 @@ Responses captured from the live endpoint with curl; each file name carries its 
 
 - The partial answer for `Lobster:wght@400;700` was byte for byte the `Lobster` answer (the regular face alone), so tests use `lobster-2026-10-07.css` for it.
 
+## catalog/
+
+`rows.json` holds Google's real CSS2 answers (family, style, file URL) for ten families, captured 2026-10-08: listed and computed weights, upright and italic, and the first and last family in the catalogue's sort order. `sample.catalog` and `without-lobster.catalog` are built from them by `scripts/catalog.sh --rows`.
+
 ## Perf/
 
 Added for the performance tests and the Example app's cold-launch benchmark on 2026-10-07: 20 OFL regular faces with 20 distinct PostScript names, none of them a family iOS ships. On the iOS 26.5 simulator none of the 20 names was active before registration (20 of 20 checked). Each URL came from a CSS2 request for the family with `User-Agent: WebFontKit/1.0.0`.
