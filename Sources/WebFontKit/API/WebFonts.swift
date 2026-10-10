@@ -91,24 +91,28 @@ public final class WebFonts: Sendable {
     let logSink: any LogSink
     let root: URL?
     let hub = EventHub()
+    /// File URLs for Google's families, so a first load can skip the CSS2 lookup. Nil in tests.
+    let catalog: GoogleFontsCatalog?
     let state: Locked<LoaderState>
     #if DEBUG
     let hooks = TestHooks()
     #endif
 
     private convenience init() {
-        self.init(configuration: nil, registrar: CoreTextRegistrar(), fileOperations: DiskFileOperations(), root: nil)
+        self.init(configuration: nil, registrar: CoreTextRegistrar(), fileOperations: DiskFileOperations(), root: nil,
+                  catalog: .bundled)
     }
 
     /// `configuration` is only the one in force until `configure`; the init itself
     /// starts nothing and does no I/O. `root` stands in for the default directory
     /// and for the temporary directory `.session` uses.
     init(configuration: Configuration?, registrar: any FontRegistrar, fileOperations: any FileOperations,
-         root: URL?, logSink: any LogSink = .logger) {
+         root: URL?, logSink: any LogSink = .logger, catalog: GoogleFontsCatalog? = nil) {
         registry = Registry(registrar: registrar, files: fileOperations, logSink: logSink)
         files = fileOperations
         self.logSink = logSink
         self.root = root
+        self.catalog = catalog
         state = Locked(LoaderState(current: Snapshot(configuration ?? Configuration(), sourceID: 0, root: root)))
     }
 
