@@ -8,7 +8,7 @@ extension Harness {
                    catalog: GoogleFontsCatalog? = nil) -> WebFonts {
         WebFonts(
             configuration: WebFonts.Configuration(source: source, storage: storage, session: session),
-            registrar: registrar, fileOperations: files, root: directory.url, logSink: logSink, catalog: catalog
+            registrar: registrar, fileOperations: files, root: directory.url, logSink: logSink, catalog: { catalog }
         )
     }
 

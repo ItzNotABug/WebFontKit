@@ -17,8 +17,7 @@ public struct DefaultFontSource: FontSource {
 
     @concurrent
     func fetch(_ font: FontRequest, session: URLSession, logSink: any LogSink = .logger) async throws -> Data {
-        let urls = try await CSS2.resolve(family: font.family, styles: [font.style], session: session, logSink: logSink)
-        guard let url = urls[font.style] else { throw WebFontError.notFound }
+        let url = try await CSS2.resolve(family: font.family, style: font.style, session: session, logSink: logSink)
         return try await Downloader.data(for: CSS2.request(for: url), session: session)
     }
 }

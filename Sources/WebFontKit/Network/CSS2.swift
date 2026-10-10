@@ -77,6 +77,13 @@ enum CSS2 {
         return prefix.hasPrefix("<")
     }
 
+    /// One style's file URL; `.notFound` when the answer doesn't list it.
+    static func resolve(family: String, style: FontStyle, session: URLSession, logSink: any LogSink) async throws -> URL {
+        guard let url = try await resolve(family: family, styles: [style], session: session, logSink: logSink)[style]
+        else { throw WebFontError.notFound }
+        return url
+    }
+
     @concurrent
     static func resolve(
         family: String,

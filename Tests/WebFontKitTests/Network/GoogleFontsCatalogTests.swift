@@ -54,7 +54,8 @@ struct GoogleFontsCatalogTests {
         #expect(GoogleFontsCatalog(data: Data("WFKC".utf8)) == nil)
 
         let full = Fixtures.data("catalog/sample.catalog")
-        var random = SystemRandomNumberGenerator()
+        // Seeded, so a failing round replays exactly.
+        var random = SplitMix64(seed: 0x5EED)
         for _ in 0..<500 {
             var damaged = full
             for _ in 0..<4 { damaged[Int.random(in: 12..<damaged.count, using: &random)] = .random(in: 0...255, using: &random) }
@@ -66,6 +67,13 @@ struct GoogleFontsCatalogTests {
                 }
             }
         }
+    }
+
+    @Test("a catalogue is used for a year after it was built, then left to CSS2")
+    func expiry() {
+        let built = Self.catalog.built
+        #expect(Self.catalog.isCurrent(at: built.addingTimeInterval(300 * 86_400)))
+        #expect(!Self.catalog.isCurrent(at: built.addingTimeInterval(366 * 86_400)))
     }
 
     @Test("the bundled catalogue opens and knows Lobster by its stable file ID")

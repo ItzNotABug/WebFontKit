@@ -269,7 +269,8 @@ extension WebFonts {
         let task = Task { [self] in
             let outcome: Result<[FontStyle: URL], WebFontError>
             // Every style in the bundled catalogue: no CSS2 request. Any miss asks CSS2 for all of them.
-            let catalogued = catalog?.urls(family: family, styles: keys.map(\.style))
+            let trusted = !state.withLock { $0.catalogMisses.contains(family) }
+            let catalogued = trusted ? catalog()?.urls(family: family, styles: keys.map(\.style)) : nil
             if let catalogued {
                 outcome = .success(catalogued)
             } else {
@@ -311,15 +312,16 @@ extension WebFonts {
         }
     }
 
-    /// A catalogued URL Google no longer serves falls back to a CSS2 lookup, as without a catalogue.
+    /// A catalogued URL Google answers with an error status falls back to CSS2, as without a
+    /// catalogue, and the family skips the catalogue from then on.
     private func fetchResolved(_ url: URL, fromCatalog: Bool, key: StyleKey, fetcher: FaceFetcher,
                                snapshot: Snapshot) async throws -> ValidatedFace {
         do {
             return try await fetcher.fetchResolved(url)
-        } catch WebFontError.notFound where fromCatalog {
-            log("load", .info, "The catalogued URL for \(key.face) is gone; asking CSS2")
-            let urls = try await CSS2.resolve(family: key.family, styles: [key.style], session: snapshot.session, logSink: logSink)
-            guard let fresh = urls[key.style] else { throw WebFontError.notFound }
+        } catch let error as WebFontError where fromCatalog && error.isStatusFailure {
+            state.withLock { _ = $0.catalogMisses.insert(key.family) }
+            log("load", .info, "The catalogued URL for \(key.face) failed (\(error)); asking CSS2")
+            let fresh = try await CSS2.resolve(family: key.family, style: key.style, session: snapshot.session, logSink: logSink)
             return try await fetcher.fetchResolved(fresh)
         }
     }
@@ -434,5 +436,15 @@ extension WebFonts {
         }
         perform(effects)
         return outcome
+    }
+}
+
+private extension WebFontError {
+    /// The server answered, but not with the file: a 4xx or 5xx.
+    var isStatusFailure: Bool {
+        switch self {
+        case .notFound, .server: true
+        default: false
+        }
     }
 }

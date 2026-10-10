@@ -91,6 +91,8 @@ struct LoaderState: Sendable {
     #endif
     var warmUp: Task<Void, Never>?
     var jobs: [StyleKey: StyleJob] = [:]
+    /// Families whose catalogued files Google no longer serves; they go to CSS2 from then on.
+    var catalogMisses: Set<String> = []
     var resolves: [UUID: (task: Task<Void, Never>?, keys: [StyleKey])] = [:]
     var calls: [UUID: CallState] = [:]
     var closes: [UUID: PendingClose] = [:]

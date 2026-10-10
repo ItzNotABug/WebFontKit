@@ -9,17 +9,19 @@
 # and compared with Google's URL before the file is written.
 set -euo pipefail
 source "$(dirname "$0")/common.sh"
-cd "$ROOT"
+# Relative --rows paths are the caller's, so resolve them before moving to the repo root.
+absolute() { case "$1" in /*) echo "$1" ;; *) echo "$PWD/$1" ;; esac; }
 
-OUT="Sources/WebFontKit/Resources/GoogleFonts.catalog"
+OUT="$ROOT/Sources/WebFontKit/Resources/GoogleFonts.catalog"
 ROWS=""
 if [ "${1:-}" = "--rows" ]; then
-    ROWS="${2:?usage: $0 --rows rows.json OUT}"
-    OUT="${3:?usage: $0 --rows rows.json OUT}"
+    ROWS="$(absolute "${2:?usage: $0 --rows rows.json OUT}")"
+    OUT="$(absolute "${3:?usage: $0 --rows rows.json OUT}")"
 fi
+cd "$ROOT"
 
 python3 - "$OUT" "$ROWS" <<'EOF'
-import base64, concurrent.futures, datetime, json, re, struct, sys, urllib.parse
+import base64, binascii, concurrent.futures, datetime, json, re, struct, sys, time, urllib.parse
 
 out, rows_path = sys.argv[1], sys.argv[2]
 URL = re.compile(r"https://fonts\.gstatic\.com/s/([a-z0-9]+)/v(\d+)/([A-Za-z0-9_-]+)\.ttf$")
@@ -33,8 +35,9 @@ def fetch_rows():
     local = threading.local()
 
     def get(host, path):
-        # One kept-alive connection per worker: no TLS handshake per request.
-        for attempt in range(3):
+        # One kept-alive connection per worker: no TLS handshake per request. Rate limits,
+        # server errors and dropped connections are retried with backoff.
+        for attempt in range(5):
             connection = getattr(local, host, None) or http.client.HTTPSConnection(host, timeout=30)
             setattr(local, host, connection)
             try:
@@ -43,9 +46,12 @@ def fetch_rows():
                 body = response.read().decode()
                 if response.status == 200:
                     return body
+                if response.status != 429 and response.status < 500:
+                    return ""
             except (OSError, http.client.HTTPException):
                 connection.close()
                 setattr(local, host, None)
+            time.sleep(0.5 * 2 ** attempt)
         return ""
 
     metadata = json.loads(get("fonts.google.com", "/metadata/fonts").removeprefix(")]}'"))
@@ -74,19 +80,27 @@ def fetch_rows():
         # A family a batched answer left out (Google drops one it can't serve) is asked for alone.
         missing = sorted(set(names) - {row[0] for row in rows})
         rows += [row for found in pool.map(css, [[name] for name in missing]) for row in found]
+    unanswered = sorted(set(names) - {row[0] for row in rows})
+    if unanswered:
+        sys.exit(f"Google answered nothing for {len(unanswered)} families, so nothing was written: {', '.join(unanswered[:10])}")
     return rows
 
 rows = json.load(open(rows_path)) if rows_path else fetch_rows()
 
 # family -> (version, {(italic, weight): id bytes}); families whose URLs break the pattern are left to CSS2.
-families, skipped = {}, set()
+families, skipped, sources = {}, set(), {}
 for name, style, url in rows:
     match = URL.match(url)
     weight = int(style.rstrip("i"))
     if not match or match.group(1) != slug(name) or weight % 100 or not 100 <= weight <= 1000:
         skipped.add(name)
         continue
-    identifier = base64.urlsafe_b64decode(match.group(3) + "=" * (-len(match.group(3)) % 4))
+    try:
+        identifier = base64.urlsafe_b64decode(match.group(3) + "=" * (-len(match.group(3)) % 4))
+    except binascii.Error:
+        skipped.add(name)
+        continue
+    sources[(name, style.endswith("i"), weight)] = url
     entry = families.setdefault(name, [int(match.group(2)), {}])
     if entry[0] != int(match.group(2)):
         skipped.add(name)
@@ -145,7 +159,7 @@ header = b"WFKC" + bytes([1, 0]) + struct.pack("<HI", len(names), day)
 index_size = 4 * len(names)
 data = header + b"".join(struct.pack("<I", len(header) + index_size + o) for o in offsets) + records
 
-# Decode every entry back, exactly as the library will, and compare with Google's URL.
+# Decode every entry back and rebuild its URL exactly as the library will, then compare with Google's.
 def decode(name, italic, weight):
     count = struct.unpack_from("<H", data, 6)[0]
     lo, hi, key = 0, count - 1, name.encode()
@@ -183,11 +197,16 @@ def decode(name, italic, weight):
                         return version, identifier
     return None
 
+def rebuilt_url(name, version, identifier):
+    encoded = base64.urlsafe_b64encode(identifier).decode().rstrip("=")
+    return f"https://fonts.gstatic.com/s/{slug(name)}/v{version}/{encoded}.ttf"
+
 checked = 0
 for name in names:
-    version, styles = families[name]
-    for (italic, weight), identifier in styles.items():
-        assert decode(name, italic, weight) == (version, identifier), f"round trip failed: {name} {weight}{'i' if italic else ''}"
+    for (italic, weight) in families[name][1]:
+        decoded = decode(name, italic, weight)
+        url = rebuilt_url(name, *decoded) if decoded else None
+        assert url == sources[(name, italic, weight)], f"round trip failed: {name} {weight}{'i' if italic else ''}"
         checked += 1
 
 open(out, "wb").write(data)

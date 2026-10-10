@@ -12,24 +12,36 @@ import Foundation
 ///   weight in ascending order; each ID is a length (u8) and its bytes.
 struct GoogleFontsCatalog: Sendable {
     /// The catalogue shipped with the library, mapped on first use.
+    /// Nil once it is a year old: Google keeps serving old versions, so an old catalogue would
+    /// pin them; CSS2 answers with the current ones.
     static let bundled: GoogleFontsCatalog? = Bundle.module.url(forResource: "GoogleFonts", withExtension: "catalog")
         .flatMap { try? Data(contentsOf: $0, options: .alwaysMapped) }
         .flatMap(GoogleFontsCatalog.init(data:))
+        .flatMap { $0.isCurrent(at: .now) ? $0 : nil }
+
+    static let lifetime: TimeInterval = 365 * 24 * 60 * 60
 
     private let data: Data
     private let count: Int
+    /// When `scripts/catalog.sh` built it.
+    let built: Date
 
     init?(data: Data) {
-        let count = data.withUnsafeBytes { bytes -> Int? in
+        let header = data.withUnsafeBytes { bytes -> (count: Int, day: Int)? in
             var cursor = Cursor(bytes: bytes, at: 0)
             guard cursor.take(4).map({ Array($0) }) == Array("WFKC".utf8), cursor.u8() == 1, cursor.u8() != nil,
-                  let count = cursor.u16(), cursor.u32() != nil, 12 + 4 * count <= bytes.count
+                  let count = cursor.u16(), let day = cursor.u32(), 12 + 4 * count <= bytes.count
             else { return nil }
-            return count
+            return (count, day)
         }
-        guard let count else { return nil }
+        guard let header else { return nil }
         self.data = data
-        self.count = count
+        self.count = header.count
+        built = Date(timeIntervalSince1970: TimeInterval(header.day) * 86_400)
+    }
+
+    func isCurrent(at date: Date) -> Bool {
+        date.timeIntervalSince(built) < Self.lifetime
     }
 
     /// Each style's URL, or nil when any is missing: the caller then asks CSS2 for the whole call.
