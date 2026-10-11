@@ -5,7 +5,8 @@
 [![Platforms](https://img.shields.io/badge/platforms-iOS%2017%2B%20%7C%20macOS%2014%2B-0A84FF?logo=apple&logoColor=white)](#installation)
 [![License](https://img.shields.io/badge/license-Apache%202.0-blue)](LICENSE)
 
-Any Google Font by name, in one line of SwiftUI. Downloaded once, kept on disk, and registered with the system like any bundled font.
+Any Google Font by name, in one line of SwiftUI. Downloaded once, kept on disk, and registered with the system like any
+bundled font.
 
 <p align="center">
   <img src=".github/assets/hero.webp" alt="Text(&quot;Hello&quot;).font(web: &quot;Lobster&quot;, size: 24) drawing Hello in Lobster on an iPhone" width="800">
@@ -32,7 +33,8 @@ Requires iOS 17+ or macOS 14+, and Xcode 26+.
 ```swift
 Text("Hello").font(web: "Lobster", size: 24)
 Text("Hello").font(web: "Inter", size: 17, weight: .bold, italic: true)
-Text("12:45").font(web: "Bebas Neue", fixedSize: 64)  // ignores Dynamic Type
+Text("12:45").font(web: "Bebas Neue", fixedSize: 64)
+// ignores Dynamic Type
 ```
 
 <details>
@@ -41,9 +43,13 @@ Text("12:45").font(web: "Bebas Neue", fixedSize: 64)  // ignores Dynamic Type
 ```swift
 Text("Hello").font(web: "Pacifico", size: 28) { phase in
     switch phase {
-    case .loading: showSpinner = true
-    case .loaded: showSpinner = false
-    case .failed(let error): print(error)  // .notFound, .offline, …
+    case .loading:
+        showSpinner = true
+    case .loaded:
+        showSpinner = false
+    case .failed(let error):
+        print(error)
+    // .notFound, .offline, …
     }
 }
 ```
@@ -60,7 +66,8 @@ try await WebFonts.shared.load("Inter", styles: [.regular, .bold])
 label.font = UIFont(name: "Inter", size: 17)
 ```
 
-A widget renders once, so load in its timeline provider before returning the entry. To share fonts with the app, configure both with the App Group container:
+A widget renders once, so load in its timeline provider before returning the entry. To share fonts with the app,
+configure both with the App Group container:
 
 ```swift
 WebFonts.shared.configure(.init(directory: appGroupURL))
@@ -72,8 +79,10 @@ WebFonts.shared.configure(.init(directory: appGroupURL))
 <summary><b>Prefetching</b></summary>
 
 ```swift
-let results = await WebFonts.shared.load(["Lobster", "Caveat", "Inter"])  // never throws
-for (family, error) in results.failed { print(family, error) }
+let results = await WebFonts.shared.load(["Lobster", "Caveat", "Inter"]) // never throws
+for (family, error) in results.failed {
+    print(family, error)
+}
 ```
 
 </details>
@@ -116,7 +125,9 @@ struct MyClient: FontSource {
     }
 
     // Optional: bump it to replace stored files.
-    func cacheKey(for font: FontRequest) -> String { "\(font.family)-v2" }
+    func cacheKey(for font: FontRequest) -> String {
+        "\(font.family)-v2"
+    }
 }
 ```
 
@@ -126,34 +137,56 @@ struct MyClient: FontSource {
 <summary><b>Storage, stored fonts and events</b></summary>
 
 ```swift
-WebFonts.shared.configure(.init(storage: .session))  // keep fonts for this launch only
+WebFonts.shared.configure(.init(storage: .session))
+// keep fonts for this launch only
 
-let stored = WebFonts.shared.downloaded               // family, style, PostScript name, size, date
+let stored = WebFonts.shared.downloaded // family, style, PostScript name, size, date
 try await WebFonts.shared.remove("Lobster")
 try await WebFonts.shared.removeAll()
 
-for await event in WebFonts.shared.events { print(event) }  // loads, failures, removals
+for await event in WebFonts.shared.events {
+    print(event)
+}
+// loads, failures, removals
 ```
 
 </details>
 
 ## Good to know
 
-- **Fast first loads.** A bundled catalogue of Google's file URLs (nearly every family, ~133 KB) skips Google's lookup, so a new font downloads in one request; anything it can't answer falls back to the lookup. A weekly job keeps it current.
-- **Load the styles you draw.** iOS never fakes bold or italic for a downloaded font. A style the family lacks draws its regular face.
-- **Privacy.** The default source sends the user's IP address to Google, like any web font. Say so in your privacy policy, or self-host.
-- **Logs.** WebFontKit logs to the unified log under the subsystem `com.itznotabug.webfontkit`, with file URLs private.
-- **Licences.** Google Fonts are open-licensed, mostly under the SIL OFL; see the [attributions](https://fonts.google.com/attribution).
+- **Fast first loads.** A bundled catalogue of Google's font URLs (~133 KB) means a new font is a single download.
+  Anything it doesn't cover asks Google instead, and a weekly job keeps it current.
 
-For the full guide (styles, system fonts, widgets, self-hosting), open the package in Xcode and choose **Product › Build Documentation**.
+- **Load every style you draw.** iOS never fakes bold or italic for a downloaded font. A style the family doesn't have
+  draws in its regular face.
+
+- **Privacy.** Like any web font, the default source sends the user's IP address to Google. Mention it in your privacy
+  policy, or self-host.
+
+- **Logging.** Logs go to the unified log under the `com.itznotabug.webfontkit` subsystem, with file paths kept private.
+
+- **Licences.** Google Fonts are open source, mostly under the SIL Open Font License. See
+  Google's [attributions](https://fonts.google.com/attribution).
+
+For the full guide (styles, system fonts, widgets, self-hosting), open the package in Xcode and choose **Product › Build
+Documentation**.
 
 ## Example app
 
-A showcase in `Example/`: try any family, browse a type gallery, manage stored fonts, and watch live events. Open `Example/WebFontKitExample.xcodeproj` and run **Showcase**. For a device, put `DEVELOPMENT_TEAM = <your team ID>` in `Example/Signing.local.xcconfig`.
+Try any family, browse a type gallery, manage stored fonts and watch live events.
+
+Open `Example/WebFontKitExample.xcodeproj` and run **Showcase**.    
+For a device, add your signing to `Example/Signing.local.xcconfig`:
+
+```
+DEVELOPMENT_TEAM = <your team ID>
+BUNDLE_ID_PREFIX = <a prefix you own>
+```
 
 ## Development
 
-`scripts/build.sh` builds everything with zero warnings, and `scripts/verify.sh` runs every test suite on macOS and iOS before a release. Both need [XcodeGen](https://github.com/yonaskolb/XcodeGen) for the Example app.
+`scripts/build.sh` builds everything with zero warnings, and `scripts/verify.sh` runs every test suite on macOS and iOS
+before a release. Both need [XcodeGen](https://github.com/yonaskolb/XcodeGen) for the Example app.
 
 ## License
 
