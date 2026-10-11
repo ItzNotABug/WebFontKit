@@ -1,0 +1,46 @@
+name: Reckon
+
+# Twice a month, rebuild the Google Fonts catalogue and compare it with the committed one.
+# A content change opens (or updates) one refresh PR; a broken script, dead committed URLs or
+# file IDs changing within a version fail the run instead.
+on:
+  schedule:
+    - cron: "17 6 1,15 * *"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  pull-requests: write
+  actions: write
+
+concurrency:
+  group: reckon
+
+jobs:
+  reckon:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Reckon
+        id: reckon
+        run: scripts/reckon.sh --summary "$RUNNER_TEMP/reckon.md"
+
+      - name: Open or update the refresh PR
+        if: steps.reckon.outputs.changed == 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git switch -C catalog-refresh
+          git commit -qam "Refresh the Google Fonts catalogue"
+          git push -qf origin catalog-refresh
+          if [ "$(gh pr view catalog-refresh --json state -q .state 2>/dev/null)" = OPEN ]; then
+            gh pr edit catalog-refresh --body-file "$RUNNER_TEMP/reckon.md"
+          else
+            gh pr create --head catalog-refresh --base main --title "Refresh the Google Fonts catalogue" --body-file "$RUNNER_TEMP/reckon.md"
+          fi
+          # A PR opened with the Actions token starts no workflows, so start CI on it here.
+          gh workflow run ci.yml --ref catalog-refresh
