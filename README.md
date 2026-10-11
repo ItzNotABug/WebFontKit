@@ -20,7 +20,7 @@ Text("Hello").font(web: "Lobster", size: 24)
 ## Installation
 
 ```swift
-.package(url: "https://github.com/ItzNotABug/WebFontKit.git", branch: "main")
+.package(url: "https://github.com/ItzNotABug/WebFontKit.git", from: "1.0.0")
 ```
 
 In Xcode: **File › Add Package Dependencies…**, paste the URL, and add the `WebFontKit` product.
