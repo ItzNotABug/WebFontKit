@@ -65,7 +65,8 @@ public final class WebFonts: Sendable {
         /// ```
         public var directory: URL?
 
-        /// The session downloads use. Default (nil): a dedicated ephemeral session.
+        /// The session downloads use. Default (nil): a dedicated ephemeral session. With the default
+        /// source, most file URLs come from a bundled catalogue rather than a CSS2 answer.
         ///
         /// ```swift
         /// configuration.session = URLSession(configuration: myProxyConfiguration)
@@ -91,24 +92,28 @@ public final class WebFonts: Sendable {
     let logSink: any LogSink
     let root: URL?
     let hub = EventHub()
+    /// Read on the first Google lookup, so creating `shared` does no I/O.
+    let catalog: @Sendable () -> GoogleFontsCatalog?
     let state: Locked<LoaderState>
     #if DEBUG
     let hooks = TestHooks()
     #endif
 
     private convenience init() {
-        self.init(configuration: nil, registrar: CoreTextRegistrar(), fileOperations: DiskFileOperations(), root: nil)
+        self.init(configuration: nil, registrar: CoreTextRegistrar(), fileOperations: DiskFileOperations(), root: nil,
+                  catalog: { GoogleFontsCatalog.bundled })
     }
 
     /// `configuration` is only the one in force until `configure`; the init itself
     /// starts nothing and does no I/O. `root` stands in for the default directory
     /// and for the temporary directory `.session` uses.
     init(configuration: Configuration?, registrar: any FontRegistrar, fileOperations: any FileOperations,
-         root: URL?, logSink: any LogSink = .logger) {
+         root: URL?, logSink: any LogSink = .logger, catalog: @escaping @Sendable () -> GoogleFontsCatalog? = { nil }) {
         registry = Registry(registrar: registrar, files: fileOperations, logSink: logSink)
         files = fileOperations
         self.logSink = logSink
         self.root = root
+        self.catalog = catalog
         state = Locked(LoaderState(current: Snapshot(configuration ?? Configuration(), sourceID: 0, root: root)))
     }
 
@@ -126,6 +131,8 @@ public final class WebFonts: Sendable {
             let next = Snapshot(configuration, sourceID: state.current.sourceID + 1, root: root)
             let storeChanged = next.directory != state.current.directory
             state.current = next
+            // Misses seen through another session or proxy may not hold for this one.
+            state.catalogMisses = []
             if state.warmUpsStarted == 0 || storeChanged {
                 startWarmUp(&state)
             }

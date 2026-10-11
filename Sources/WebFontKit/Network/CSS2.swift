@@ -4,6 +4,8 @@ import OSLog
 /// Google's CSS2 API: the one request per family, and reading its answer.
 enum CSS2 {
     static let endpoint = URL(string: "https://fonts.googleapis.com/css2")!
+    /// Where Google serves font files: `<folder>/v<version>/<file ID>.ttf`.
+    static let files = URL(string: "https://fonts.gstatic.com/s")!
 
     static let responseCap = 1024 * 1024
 
@@ -75,6 +77,14 @@ enum CSS2 {
         let prefix = String(decoding: response.body.prefix(64), as: UTF8.self)
             .trimmingCharacters(in: .whitespacesAndNewlines)
         return prefix.hasPrefix("<")
+    }
+
+    /// One style's file URL; `.notFound` when the answer doesn't list it.
+    @concurrent
+    static func resolve(family: String, style: FontStyle, session: URLSession, logSink: any LogSink) async throws -> URL {
+        guard let url = try await resolve(family: family, styles: [style], session: session, logSink: logSink)[style]
+        else { throw WebFontError.notFound }
+        return url
     }
 
     @concurrent

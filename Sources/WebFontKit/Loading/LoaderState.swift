@@ -16,7 +16,7 @@ struct StyleKey: Hashable, Sendable {
 struct StyleJob: Sendable {
     enum Stage: Sendable {
         case resolving(UUID)
-        case ready(URL)
+        case ready(URL, fromCatalog: Bool)
         case fetching
         case validated(ValidatedFace)
         case failed(WebFontError)
@@ -75,7 +75,7 @@ struct PendingClose: Sendable {
 /// Side effects decided under the lock and performed after it.
 struct Effects: Sendable {
     var resumes: [(CheckedContinuation<CallResult, Never>, CallResult)] = []
-    var start: [(key: StyleKey, url: URL, job: UUID, snapshot: Snapshot)] = []
+    var start: [(key: StyleKey, url: URL, fromCatalog: Bool, job: UUID, snapshot: Snapshot)] = []
     var cancel: [Task<Void, Never>] = []
     var deletes: [URL] = []
     var closes: [(PendingClose, WebFontEvent)] = []
@@ -90,6 +90,8 @@ struct LoaderState: Sendable {
     #endif
     var warmUp: Task<Void, Never>?
     var jobs: [StyleKey: StyleJob] = [:]
+    /// Families whose catalogued files Google no longer serves; they go to CSS2 from then on.
+    var catalogMisses: Set<String> = []
     var resolves: [UUID: (task: Task<Void, Never>?, keys: [StyleKey])] = [:]
     var calls: [UUID: CallState] = [:]
     var closes: [UUID: PendingClose] = [:]
@@ -138,7 +140,7 @@ struct LoaderState: Sendable {
         }
 
         for (key, job) in jobs {
-            guard case .ready(let url) = job.stage, !job.waiters.isEmpty else { continue }
+            guard case .ready(let url, let fromCatalog) = job.stage, !job.waiters.isEmpty else { continue }
             // Every waiter has parked and none waits on a resolve: a call about to fail on another
             // style (and so withdraw) has failed first, and no font file is requested for it.
             let decided = job.waiters.allSatisfy { waiter in
@@ -147,7 +149,7 @@ struct LoaderState: Sendable {
             }
             if decided {
                 jobs[key]?.stage = .fetching
-                effects.start.append((key, url, job.id, job.snapshot))
+                effects.start.append((key, url, fromCatalog, job.id, job.snapshot))
             }
         }
 

@@ -67,6 +67,17 @@ final class PerformanceTests: XCTestCase {
         }
     }
 
+    /// A catalogue lookup replaces a CSS2 round trip, so it must stay far below a millisecond.
+    func testCatalogLookup() throws {
+        let catalog = try XCTUnwrap(GoogleFontsCatalog.shipped())
+        let families = ["Lobster", "Inter", "Roboto", "Noto Sans Kannada", "Playfair Display", "ABeeZee", "Zilla Slab"]
+        measure(metrics: [XCTClockMetric()]) {
+            for index in 0..<10_000 {
+                _ = catalog.urls(family: families[index % families.count], styles: [.regular, .bold])
+            }
+        }
+    }
+
     func testWarmUpOfTwentyFonts() throws {
         XCTAssertEqual(try Self.perfFixtures().count, 20)
         let template = try Self.storePerfTemplate()

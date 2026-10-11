@@ -5,3 +5,4 @@ xcuserdata/
 DerivedData/
 *.xcresult
 Example/Signing.local.xcconfig
+*.profraw

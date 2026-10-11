@@ -121,7 +121,7 @@ extension WebFonts {
             if let (id, resolveKeys) = resolve {
                 startResolve(id, keys: resolveKeys, snapshot: snapshot)
             } else {
-                for (key, job) in starts { startFetch(key, url: nil, job: job, snapshot: snapshot) }
+                for (key, job) in starts { startFetch(key, url: nil, fromCatalog: false, job: job, snapshot: snapshot) }
             }
         }
 
@@ -250,7 +250,7 @@ extension WebFonts {
             task.cancel()
         }
         for start in effects.start {
-            startFetch(start.key, url: start.url, job: start.job, snapshot: start.snapshot)
+            startFetch(start.key, url: start.url, fromCatalog: start.fromCatalog, job: start.job, snapshot: start.snapshot)
         }
         for (close, event) in effects.closes {
             emitIfCurrent(close, event)
@@ -268,14 +268,21 @@ extension WebFonts {
         guard let family = keys.first?.family else { return }
         let task = Task { [self] in
             let outcome: Result<[FontStyle: URL], WebFontError>
-            do {
-                outcome = .success(try await CSS2.resolve(family: family, styles: keys.map(\.style),
-                                                          session: snapshot.session, logSink: logSink))
-            } catch let error as WebFontError {
-                outcome = .failure(error)
-            } catch {
-                // A cancelled resolve's jobs are already gone, so this only ends jobs still waiting.
-                outcome = .failure(.network(.cancelled))
+            // Every style in the bundled catalogue: no CSS2 request. Any miss asks CSS2 for all of them.
+            let trusted = !state.withLock { $0.catalogMisses.contains(family) }
+            let catalogued = trusted ? catalog()?.urls(family: family, styles: keys.map(\.style)) : nil
+            if let catalogued {
+                outcome = .success(catalogued)
+            } else {
+                do {
+                    outcome = .success(try await CSS2.resolve(family: family, styles: keys.map(\.style),
+                                                              session: snapshot.session, logSink: logSink))
+                } catch let error as WebFontError {
+                    outcome = .failure(error)
+                } catch {
+                    // A cancelled resolve's jobs are already gone, so this only ends jobs still waiting.
+                    outcome = .failure(.network(.cancelled))
+                }
             }
             let effects = state.withLock { state -> Effects in
                 for key in keys {
@@ -283,7 +290,7 @@ extension WebFonts {
                     switch outcome {
                     case .success(let urls):
                         if let url = urls[key.style] {
-                            state.jobs[key]?.stage = .ready(url)
+                            state.jobs[key]?.stage = .ready(url, fromCatalog: catalogued != nil)
                         } else {
                             state.jobs[key]?.stage = .failed(.notFound)
                             state.recordFailure(key, .notFound)
@@ -305,7 +312,24 @@ extension WebFonts {
         }
     }
 
-    private func startFetch(_ key: StyleKey, url: URL?, job: UUID, snapshot: Snapshot) {
+    /// A catalogued file Google reports gone falls back to CSS2, and the family skips the catalogue
+    /// from then on. A rate limit or server error fails as usual: CSS2 would name the same file.
+    private func fetchResolved(_ url: URL, fromCatalog: Bool, key: StyleKey, fetcher: FaceFetcher,
+                               snapshot: Snapshot) async throws -> ValidatedFace {
+        do {
+            return try await fetcher.fetchResolved(url)
+        } catch let error as WebFontError where fromCatalog && error.meansGone {
+            state.withLock { state in
+                // A fetch from before a `configure` doesn't speak for the new session.
+                if state.current.sourceID == snapshot.sourceID { state.catalogMisses.insert(key.family) }
+            }
+            log("load", .info, "The catalogued URL for \(key.face) failed (\(error)); asking CSS2")
+            let fresh = try await CSS2.resolve(family: key.family, style: key.style, session: snapshot.session, logSink: logSink)
+            return try await fetcher.fetchResolved(fresh)
+        }
+    }
+
+    private func startFetch(_ key: StyleKey, url: URL?, fromCatalog: Bool, job: UUID, snapshot: Snapshot) {
         #if DEBUG
         hooks.onFetch?(key.family)
         #endif
@@ -316,7 +340,7 @@ extension WebFonts {
             do {
                 try files.createDirectory(at: snapshot.directory)
                 if let url {
-                    outcome = .success(try await fetcher.fetchResolved(url))
+                    outcome = .success(try await fetchResolved(url, fromCatalog: fromCatalog, key: key, fetcher: fetcher, snapshot: snapshot))
                 } else {
                     outcome = .success(try await fetcher.fetchCustom(FontRequest(family: key.family, style: key.style), from: snapshot.source))
                 }
@@ -415,5 +439,15 @@ extension WebFonts {
         }
         perform(effects)
         return outcome
+    }
+}
+
+private extension WebFontError {
+    /// Google no longer has the file: a 400 or 404 (both `.notFound`), 403 or 410.
+    var meansGone: Bool {
+        switch self {
+        case .notFound, .server(statusCode: 403), .server(statusCode: 410): true
+        default: false
+        }
     }
 }
