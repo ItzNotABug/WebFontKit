@@ -3,30 +3,25 @@ name: CI
 on:
   push:
     branches: [main]
-    paths-ignore: ["**/*.md", LICENSE, .gitignore, "Example/**", "Sources/WebFontKit/WebFontKit.docc/**", scripts/build.sh, scripts/verify.sh, scripts/catalog.sh]
+    paths-ignore: ["**/*.md", LICENSE, .gitignore, "Example/**", "Sources/WebFontKit/WebFontKit.docc/**", scripts/build.sh, scripts/verify.sh, scripts/catalog.sh, scripts/catalog.py, scripts/reckon.sh, .github/workflows/reckon.yml]
   pull_request:
-    paths-ignore: ["**/*.md", LICENSE, .gitignore, "Example/**", "Sources/WebFontKit/WebFontKit.docc/**", scripts/build.sh, scripts/verify.sh, scripts/catalog.sh]
+    paths-ignore: ["**/*.md", LICENSE, .gitignore, "Example/**", "Sources/WebFontKit/WebFontKit.docc/**", scripts/build.sh, scripts/verify.sh, scripts/catalog.sh, scripts/catalog.py, scripts/reckon.sh, .github/workflows/reckon.yml]
   workflow_dispatch:
 
 permissions:
   contents: read
 
-# A new push to a pull request cancels its run in progress; runs on main always finish.
 concurrency:
   group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 env:
-  # Must be an Xcode path listed for macos-26 in actions/runner-images.
   DEVELOPER_DIR: /Applications/Xcode_26.6.app/Contents/Developer
 
 defaults:
   run:
     shell: bash
 
-# No build cache: there are no dependencies, and a fresh checkout's timestamps
-# make SwiftPM rebuild every file anyway. Simulators, UI tests and the
-# many-runs loop stay in scripts/verify.sh; CI is the fast macOS check.
 jobs:
   test:
     name: ${{ matrix.name }}
@@ -37,7 +32,6 @@ jobs:
         include:
           - name: Test
             flags: ""
-          # Builds and tests under Swift's upcoming concurrency default.
           - name: Concurrency
             flags: -Xswiftc -enable-upcoming-feature -Xswiftc NonisolatedNonsendingByDefault
     steps:
@@ -48,7 +42,6 @@ jobs:
           manifest=$(swift package dump-package)
           ! grep -q unsafeFlags <<< "$manifest"
 
-      # One SwiftPM invocation builds and tests; any warning fails it.
       - name: Build and test, zero warnings
         run: |
           source scripts/common.sh
