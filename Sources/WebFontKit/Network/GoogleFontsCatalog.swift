@@ -12,10 +12,12 @@ import Foundation
 ///   weight in ascending order; each ID is a length (u8) and its bytes.
 struct GoogleFontsCatalog: Sendable {
     /// Mapped on first use. Nil once a year old: Google keeps serving old versions, so it would pin them.
-    static let bundled: GoogleFontsCatalog? = Bundle.module.url(forResource: "GoogleFonts", withExtension: "catalog")
+    static let bundled: GoogleFontsCatalog? = shipped.flatMap { $0.isCurrent(at: .now) ? $0 : nil }
+
+    /// The file in the package, whatever its age.
+    static let shipped: GoogleFontsCatalog? = Bundle.module.url(forResource: "GoogleFonts", withExtension: "catalog")
         .flatMap { try? Data(contentsOf: $0, options: .alwaysMapped) }
         .flatMap(GoogleFontsCatalog.init(data:))
-        .flatMap { $0.isCurrent(at: .now) ? $0 : nil }
 
     static let lifetime: TimeInterval = 365 * 24 * 60 * 60
 

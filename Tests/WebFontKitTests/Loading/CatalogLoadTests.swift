@@ -54,6 +54,22 @@ struct CatalogLoadTests {
         #expect(!harness.server.requests.contains { $0.url == latoBold }, "bold's catalogued URL was never tried")
     }
 
+    @Test("a passing server error falls back without turning the catalogue off for the family")
+    func transientErrorKeepsCatalogue() async throws {
+        let harness = Harness()
+        let latoRegular = try #require(GoogleFontsCatalogTests.catalog.urls(family: "Lato", styles: [.regular])?[.regular])
+        let latoBold = try #require(GoogleFontsCatalogTests.catalog.urls(family: "Lato", styles: [.bold])?[.bold])
+        harness.server.respond(to: latoRegular, with: StubResponse(statusCode: 503))
+        harness.server.serveGoogle()
+        let fonts = harness.makeFonts(catalog: GoogleFontsCatalogTests.catalog)
+        try await harness.warmUp(fonts)
+
+        _ = try? await fonts.load("Lato", styles: [.regular])
+        _ = try? await fonts.load("Lato", styles: [.bold])
+
+        #expect(harness.server.requests.contains { $0.url == latoBold }, "bold still came from the catalogue")
+    }
+
     @Test("the catalogue is read on the first Google lookup, not when WebFonts is created")
     func readLazily() async throws {
         let harness = Harness()

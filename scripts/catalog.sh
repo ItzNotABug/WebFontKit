@@ -71,14 +71,17 @@ def fetch_rows():
 
     def css(batch):
         # Many families per request; each block names its family, so nothing is attributed wrongly.
+        # A block that doesn't parse (a weight range, say) gets an empty URL, so its family is left to CSS2.
         text = get("fonts.googleapis.com", "/css2?" + "&".join(query(name) for name in batch))
         found = []
         for block in text.split("@font-face")[1:]:
-            family = re.search(r"font-family:\s*'([^']+)'", block).group(1)
-            italic = re.search(r"font-style:\s*italic", block) is not None
-            weight = re.search(r"font-weight:\s*(\d+)", block).group(1)
-            url = re.search(r"url\((https://[^)]+)\)", block).group(1)
-            found.append((family, weight + ("i" if italic else ""), url))
+            family = re.search(r"font-family:\s*'([^']+)'", block)
+            weight = re.search(r"font-weight:\s*(\d+)\s*;", block)
+            url = re.search(r"url\((https://[^)]+)\)", block)
+            if family:
+                italic = re.search(r"font-style:\s*italic", block) is not None
+                style = (weight.group(1) if weight else "0") + ("i" if italic else "")
+                found.append((family.group(1), style, url.group(1) if url and weight else ""))
         return found
 
     names = sorted(families)
@@ -162,7 +165,7 @@ header = b"WFKC" + bytes([1, 0]) + struct.pack("<HI", len(names), day)
 index_size = 4 * len(names)
 data = header + b"".join(struct.pack("<I", len(header) + index_size + o) for o in offsets) + records
 
-# Decode every entry back and rebuild its URL exactly as the library will, then compare with Google's.
+# Decode every entry back, as GoogleFontsCatalog.swift reads it, and compare the rebuilt URL with Google's.
 def decode(name, italic, weight):
     count = struct.unpack_from("<H", data, 6)[0]
     lo, hi, key = 0, count - 1, name.encode()
@@ -191,7 +194,7 @@ def decode(name, italic, weight):
                     identifier[offset + i] ^= diff[i]
                 return version, bytes(identifier)
         else:
-            for n in range(16):
+            for n in range(1, 16):
                 if mask >> n & 1:
                     length = data[at]
                     identifier = data[at + 1:at + 1 + length]

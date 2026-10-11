@@ -76,9 +76,9 @@ struct GoogleFontsCatalogTests {
         #expect(!Self.catalog.isCurrent(at: built.addingTimeInterval(366 * 86_400)))
     }
 
-    @Test("the bundled catalogue opens and knows Lobster by its stable file ID")
+    @Test("the shipped catalogue opens and knows Lobster by its stable file ID")
     func bundled() throws {
-        let url = try #require(GoogleFontsCatalog.bundled?.urls(family: "Lobster", styles: [.regular])?[.regular])
+        let url = try #require(GoogleFontsCatalog.shipped?.urls(family: "Lobster", styles: [.regular])?[.regular])
         #expect(url.host == "fonts.gstatic.com")
         #expect(url.path.hasPrefix("/s/lobster/v"))
         #expect(url.lastPathComponent == "neILzCirqoswsqX9_oU.ttf")

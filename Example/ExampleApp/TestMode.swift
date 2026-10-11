@@ -134,8 +134,10 @@ final class ExampleStub: URLProtocol {
             respond(200, type: "text/css", body: Data(css.utf8), url: url)
             return
         }
-        let family = url.pathComponents.count > 2 ? url.pathComponents[2] : ""
-        guard let file = Self.bundledFamilies[family],
+        // The folder is the family name from the stub's CSS, or Google's slug ("abrilfatface") from the catalogue.
+        let folder = url.pathComponents.count > 2 ? url.pathComponents[2] : ""
+        let family = Self.bundledFamilies.keys.first { $0 == folder || $0.lowercased().filter { $0.isASCII && ($0.isLetter || $0.isNumber) } == folder }
+        guard let family, let file = Self.bundledFamilies[family],
               let data = Bundle.main.url(forResource: file, withExtension: nil).flatMap({ try? Data(contentsOf: $0) })
         else {
             respond(404, type: "text/plain", body: Data(), url: url)

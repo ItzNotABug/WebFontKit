@@ -319,7 +319,7 @@ extension WebFonts {
         do {
             return try await fetcher.fetchResolved(url)
         } catch let error as WebFontError where fromCatalog && error.isStatusFailure {
-            state.withLock { _ = $0.catalogMisses.insert(key.family) }
+            if error.meansGone { state.withLock { _ = $0.catalogMisses.insert(key.family) } }
             log("load", .info, "The catalogued URL for \(key.face) failed (\(error)); asking CSS2")
             let fresh = try await CSS2.resolve(family: key.family, style: key.style, session: snapshot.session, logSink: logSink)
             return try await fetcher.fetchResolved(fresh)
@@ -444,6 +444,14 @@ private extension WebFontError {
     var isStatusFailure: Bool {
         switch self {
         case .notFound, .server: true
+        default: false
+        }
+    }
+
+    /// Not a passing failure: rate limits and server errors aren't remembered.
+    var meansGone: Bool {
+        switch self {
+        case .notFound, .server(statusCode: 403), .server(statusCode: 410): true
         default: false
         }
     }
