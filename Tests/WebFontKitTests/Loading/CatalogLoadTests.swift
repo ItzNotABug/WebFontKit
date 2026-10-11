@@ -88,6 +88,28 @@ struct CatalogLoadTests {
         #expect(harness.server.requests.contains { $0.url == latoBold })
     }
 
+    @Test("a gone file seen by a fetch from before configure doesn't turn the catalogue off afterwards")
+    func staleFetchKeepsCatalogue() async throws {
+        let harness = Harness()
+        let latoRegular = try #require(GoogleFontsCatalogTests.catalog.urls(family: "Lato", styles: [.regular])?[.regular])
+        let latoBold = try #require(GoogleFontsCatalogTests.catalog.urls(family: "Lato", styles: [.bold])?[.bold])
+        var gone = StubResponse(statusCode: 404)
+        gone.hold = .beforeResponse
+        harness.server.respond(to: latoRegular, with: gone)
+        harness.server.serveGoogle()
+        let fonts = harness.makeFonts(catalog: GoogleFontsCatalogTests.catalog)
+        try await harness.warmUp(fonts)
+
+        let old = Task { try? await fonts.load("Lato", styles: [.regular]) }
+        _ = try await harness.server.waitForRequests { $0 == latoRegular }
+        fonts.configure(WebFonts.Configuration(directory: harness.directory.url, session: harness.session))
+        harness.server.release(latoRegular.absoluteString)
+        _ = await old.value
+        _ = try? await fonts.load("Lato", styles: [.bold])
+
+        #expect(harness.server.requests.contains { $0.url == latoBold })
+    }
+
     @Test("the catalogue is read on the first Google lookup, not when WebFonts is created")
     func readLazily() async throws {
         let harness = Harness()

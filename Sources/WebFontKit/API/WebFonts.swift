@@ -65,7 +65,8 @@ public final class WebFonts: Sendable {
         /// ```
         public var directory: URL?
 
-        /// The session downloads use. Default (nil): a dedicated ephemeral session.
+        /// The session downloads use. Default (nil): a dedicated ephemeral session. With the default
+        /// source, most file URLs come from a bundled catalogue rather than a CSS2 answer.
         ///
         /// ```swift
         /// configuration.session = URLSession(configuration: myProxyConfiguration)

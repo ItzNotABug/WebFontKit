@@ -49,7 +49,7 @@ def fetch_rows():
             try:
                 connection.request("GET", path, headers={"User-Agent": USER_AGENT})
                 response = connection.getresponse()
-                body = response.read().decode()
+                body = response.read().decode(errors="replace")
                 if response.status == 200:
                     return body
                 if response.status != 429 and response.status < 500:

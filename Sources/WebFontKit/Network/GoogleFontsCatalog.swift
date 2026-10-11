@@ -22,10 +22,16 @@ struct GoogleFontsCatalog: Sendable {
     /// Where SwiftPM and Xcode put the package's resources. Not `Bundle.module`: its accessor traps
     /// when the bundle is missing, and a missing catalogue should only mean CSS2 lookups.
     private static func resourceBundle() -> Bundle? {
+        let name = "WebFontKit_WebFontKit.bundle"
+        // Xcode previews name the bundle's folder in the environment.
+        if let path = ProcessInfo.processInfo.environment["PACKAGE_RESOURCE_BUNDLE_PATH"],
+           let bundle = Bundle(url: URL(filePath: path).appending(component: name)) {
+            return bundle
+        }
         let library = Bundle(for: BundleToken.self)
-        let places = [Bundle.main.resourceURL, Bundle.main.bundleURL, library.resourceURL,
+        let places = [Bundle.main.resourceURL, Bundle.main.bundleURL, library.resourceURL, library.bundleURL,
                       library.bundleURL.deletingLastPathComponent()]
-        return places.lazy.compactMap { $0.flatMap { Bundle(url: $0.appending(component: "WebFontKit_WebFontKit.bundle")) } }.first
+        return places.lazy.compactMap { $0.flatMap { Bundle(url: $0.appending(component: name)) } }.first
     }
 
     static let lifetime: TimeInterval = 365 * 24 * 60 * 60
@@ -63,7 +69,8 @@ struct GoogleFontsCatalog: Sendable {
                 guard cursor.read(group: styles, into: &ids) else { return nil }
             }
             guard ids.count == styles.count else { return nil }
-            let folder = String(family.lowercased().unicodeScalars.filter { $0.isASCII && ($0.properties.isAlphabetic || ("0"..."9").contains($0)) })
+            // Google's folder: the name lowercased, spaces dropped (validated names hold nothing else).
+            let folder = family.lowercased().filter { $0 != " " }
             var urls: [FontStyle: URL] = [:]
             for (style, id) in ids {
                 let name = Data(id).base64EncodedString()

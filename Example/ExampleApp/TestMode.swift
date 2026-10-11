@@ -134,7 +134,8 @@ final class ExampleStub: URLProtocol {
             respond(200, type: "text/css", body: Data(css.utf8), url: url)
             return
         }
-        // The folder is the family name from the stub's CSS, or Google's slug ("abrilfatface") from the catalogue.
+        // The folder is the family name from the stub's CSS, or Google's slug ("abrilfatface") from the
+        // catalogue. Only regular faces are bundled, so any style's file is the regular one.
         let folder = url.pathComponents.count > 2 ? url.pathComponents[2] : ""
         let family = Self.bundledFamilies.keys.first { $0 == folder || $0.lowercased().filter { $0.isASCII && ($0.isLetter || $0.isNumber) } == folder }
         guard let family, let file = Self.bundledFamilies[family],

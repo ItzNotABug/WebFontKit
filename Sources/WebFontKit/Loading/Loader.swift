@@ -319,7 +319,10 @@ extension WebFonts {
         do {
             return try await fetcher.fetchResolved(url)
         } catch let error as WebFontError where fromCatalog && error.meansGone {
-            state.withLock { _ = $0.catalogMisses.insert(key.family) }
+            state.withLock { state in
+                // A fetch from before a `configure` doesn't speak for the new session.
+                if state.current.sourceID == snapshot.sourceID { state.catalogMisses.insert(key.family) }
+            }
             log("load", .info, "The catalogued URL for \(key.face) failed (\(error)); asking CSS2")
             let fresh = try await CSS2.resolve(family: key.family, style: key.style, session: snapshot.session, logSink: logSink)
             return try await fetcher.fetchResolved(fresh)
