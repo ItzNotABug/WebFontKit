@@ -156,10 +156,10 @@ struct ModifierTests {
         let harness = Harness()
         let fonts = harness.makeFonts()
         try await harness.warmUp(fonts)
-        let view = ModifierHarness(fonts: fonts)
-        view.model.family = "Lob$ter"
-        view.model.weight = .bold
-        view.render()
+        let model = ModifierModel()
+        model.family = "Lob$ter"
+        model.weight = .bold
+        let view = ModifierHarness(fonts: fonts, model: model)
         try await view.phases.wait { $0.last == .failed(.notFound) }
         #expect(harness.logSink.entries.count { $0.message.contains("Rejected the family name") } == 1)
     }
