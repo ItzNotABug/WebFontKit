@@ -10,23 +10,25 @@ ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 BUNDLED = os.path.join(ROOT, "Sources/WebFontKit/Resources/GoogleFonts.catalog")
 URL = re.compile(r"https://fonts\.gstatic\.com/s/([a-z0-9]+)/v(\d+)/([A-Za-z0-9_-]+)\.ttf$")
 # The library's own user agent, so the catalogue lists the files a CSS2 lookup would return.
-VERSION = re.search(r'libraryVersion = "([^"]+)"', open(os.path.join(ROOT, "Sources/WebFontKit/Network/LibraryVersion.swift")).read()).group(1)
+with open(os.path.join(ROOT, "Sources/WebFontKit/Network/LibraryVersion.swift")) as source:
+    VERSION = re.search(r'libraryVersion = "([^"]+)"', source.read()).group(1)
 USER_AGENT = f"WebFontKit/{VERSION}"
 _local = threading.local()
+REFRESH_AFTER_DAYS = 90
 
 
 def slug(family):
-    return re.sub(r"[^a-z0-9]", "", family.lower())
+    # As GoogleFontsCatalog.swift spells Google's folder.
+    return family.lower().replace(" ", "")
 
 
-def url_for(name, version, identifier):
+def url_for(folder, version, identifier):
     encoded = base64.urlsafe_b64encode(identifier).decode().rstrip("=")
-    return f"https://fonts.gstatic.com/s/{slug(name)}/v{version}/{encoded}.ttf"
+    return f"https://fonts.gstatic.com/s/{folder}/v{version}/{encoded}.ttf"
 
 
 def get(host, path, method="GET"):
-    """(status, body). One kept-alive connection per thread and host, so no TLS handshake per
-    request; rate limits, server errors and dropped connections are retried with backoff."""
+    """(status, body) over a kept-alive connection per thread; 429s, 5xx and drops retry with backoff."""
     status, body = 0, ""
     for attempt in range(5):
         if attempt:
@@ -46,8 +48,7 @@ def get(host, path, method="GET"):
 
 
 def fetch_rows():
-    """(rows, unanswered): (family, style, url) for every family Google serves, style like "400"
-    or "700i", and the families it answered nothing for."""
+    """(rows, unanswered): (family, style like "700i", url) for every family, and those with no answer."""
     status, listing = get("fonts.google.com", "/metadata/fonts")
     if status != 200:
         sys.exit("Could not fetch Google's font list.")
@@ -58,8 +59,7 @@ def fetch_rows():
         return "family=" + urllib.parse.quote(name).replace("%20", "+") + ":ital,wght@" + ";".join(f"{i},{w}" for i, w in tuples)
 
     def css(batch):
-        # Many families per request; each block names its family, so nothing is attributed wrongly.
-        # A block that doesn't parse (a weight range, say) gets an empty URL, so its family is left to CSS2.
+        # Each block names its family, so batches are safe; one that doesn't parse leaves its family to CSS2.
         status, text = get("fonts.googleapis.com", "/css2?" + "&".join(query(name) for name in batch))
         found = []
         for block in text.split("@font-face")[1:] if status == 200 else []:
@@ -82,8 +82,7 @@ def fetch_rows():
 
 
 def parse(rows):
-    """(families, skipped, sources): family -> [version, {(italic, weight): id bytes}], the families
-    left to CSS2 (unusual URLs), and each style's URL as Google gave it."""
+    """(family -> [version, {(italic, weight): ID}], families left to CSS2, each style's URL from Google)."""
     families, skipped, sources = {}, set(), {}
     for name, style, url in rows:
         match = URL.match(url)
@@ -170,6 +169,7 @@ def read(data):
         if previous is not None and not previous < key:
             sys.exit(f"The index is out of order at {key.decode()}.")
         previous, name = key, key.decode()
+        folder = slug(name)
         at += 1 + data[at]
         version, groups = struct.unpack_from("<H", data, at)[0], data[at + 2]
         at += 3
@@ -187,17 +187,17 @@ def read(data):
                     diff = bytes(x ^ y for x, y in zip(struct.pack("<f", base * 100.0), struct.pack("<f", float(weight))))
                     for k in range(4):
                         computed[offset + k] ^= diff[k]
-                    styles[(italic, weight)] = url_for(name, version, bytes(computed))
+                    styles[(italic, weight)] = url_for(folder, version, bytes(computed))
             else:
                 for weight in weights:
-                    styles[(italic, weight)] = url_for(name, version, data[at + 1:at + 1 + data[at]])
+                    styles[(italic, weight)] = url_for(folder, version, data[at + 1:at + 1 + data[at]])
                     at += 1 + data[at]
         catalogue[name] = (version, styles)
     return catalogue
 
 
 def verify(data, families, sources):
-    """Every entry, read back, must give exactly Google's URL. Returns the file count."""
+    """Every entry, read back, must give exactly Google's URL. Returns (file count, what was read)."""
     catalogue = read(data)
     count = 0
     for name, (_, styles) in catalogue.items():
@@ -207,7 +207,7 @@ def verify(data, families, sources):
             count += 1
     if catalogue.keys() != families.keys() or count != sum(len(f[1]) for f in families.values()):
         sys.exit("Round trip failed: the catalogue doesn't hold every family and style it was built from.")
-    return count
+    return count, catalogue
 
 
 def write(path, data):
@@ -217,47 +217,82 @@ def write(path, data):
     os.replace(path + ".partial", path)
 
 
+def committed():
+    """(bytes, contents) of the bundled catalogue; empty when it is missing or unreadable."""
+    try:
+        with open(BUNDLED, "rb") as file:
+            data = file.read()
+        return data, read(data)
+    except FileNotFoundError:
+        return b"", {}
+    except (SystemExit, struct.error, IndexError, UnicodeDecodeError):
+        print("The committed catalogue is unreadable; building a new one from scratch.", file=sys.stderr)
+        return b"", {}
+
+
+def keep_unanswered(rows, unanswered, old):
+    """Families listed but unanswered keep their committed entries. Returns (kept, still unanswered)."""
+    kept = [name for name in unanswered if name in old]
+    rows += [(name, f"{weight}{'i' if italic else ''}", url) for name in kept for (italic, weight), url in old[name][1].items()]
+    return kept, [name for name in unanswered if name not in old]
+
+
 def catalogue(rows):
-    """(data, families, file count, skipped) for these rows, verified."""
+    """(data, file count, skipped, contents) for these rows, verified."""
     families, skipped, sources = parse(rows)
     data = build(families)
-    return data, families, verify(data, families, sources), skipped
+    count, contents = verify(data, families, sources)
+    return data, count, skipped, contents
 
 
 def command_build(arguments):
-    rows, unanswered = (json.load(open(arguments.rows)), []) if arguments.rows else fetch_rows()
-    data, families, count, skipped = catalogue(rows)
+    old = {} if arguments.rows else committed()[1]
+    if arguments.rows:
+        with open(arguments.rows) as file:
+            rows, kept, unanswered = json.load(file), [], []
+    else:
+        rows, unanswered = fetch_rows()
+        kept, unanswered = keep_unanswered(rows, unanswered, old)
+    data, count, skipped, contents = catalogue(rows)
+    if len(old.keys() - contents.keys()) > max(20, len(old) // 20):
+        sys.exit(f"{len(old.keys() - contents.keys())} committed families are missing: Google's font list may be incomplete. Nothing written.")
     out = arguments.out or BUNDLED
     write(out, data)
-    print(f"{out}: {len(families)} families, {count} files, {len(data) / 1024:.0f} KB")
+    print(f"{out}: {len(contents)} families, {count} files, {len(data) / 1024:.0f} KB")
+    if kept:
+        print(f"No answer, kept as committed: {', '.join(kept)}", file=sys.stderr)
     for label, names in (("unusual URLs", skipped), ("no answer", unanswered)):
         if names:
             print(f"Left to CSS2, {label}: {', '.join(sorted(names))}", file=sys.stderr)
 
 
 def command_reckon(arguments):
-    """Fails when the committed catalogue stops working or Google's answers change shape;
-    otherwise rewrites it when its content changed, with a summary of what did."""
-    with open(BUNDLED, "rb") as file:
-        committed = file.read()
-    old = read(committed)
-    problems, lines = [], []
-
-    # The design relies on Google serving old versions; check a sample of the committed files.
-    sample = random.sample(sorted(url for _, styles in old.values() for url in styles.values()), 50)
+    """Fails on dead committed URLs or a changed answer shape; otherwise refreshes changed or old files."""
+    old_data, old = committed()
+    pairs = [(name, url) for name, (_, styles) in old.items() for url in styles.values()]
+    sample = random.sample(pairs, min(50, len(pairs)))
+    # The catalogue relies on Google serving old versions; sampled while the fresh build is fetched.
     with concurrent.futures.ThreadPoolExecutor(8) as pool:
-        statuses = list(pool.map(lambda url: get("fonts.gstatic.com", urllib.parse.urlsplit(url).path, "HEAD")[0], sample))
-    dead = [url for url, status in zip(sample, statuses) if status != 200]
-    if dead:
-        problems.append(f"{len(dead)} of {len(sample)} committed file URLs no longer answer 200, e.g. {dead[0]}")
+        statuses = pool.map(lambda pair: get("fonts.gstatic.com", urllib.parse.urlsplit(pair[1]).path, "HEAD")[0], sample)
+        rows, unanswered = fetch_rows()
+        statuses = list(statuses)
+    kept, unanswered = keep_unanswered(rows, unanswered, old)
+    data, count, skipped, new = catalogue(rows)
 
-    rows, unanswered = fetch_rows()
-    data, _, count, skipped = catalogue(rows)
-    new = read(data)
+    problems, lines = [], []
+    # A retired family's files are expected to go; it is reported as removed instead.
+    checked = [(url, status) for (name, url), status in zip(sample, statuses) if name in new]
+    dead = [url for url, status in checked if status != 200]
+    if dead:
+        problems.append(f"{len(dead)} of {len(checked)} committed file URLs no longer answer 200, e.g. {dead[0]}")
+    # Kept families ride out an outage, so only the rest count here.
     if len(skipped) + len(unanswered) > 10:
-        problems.append(f"{len(skipped) + len(unanswered)} families left to CSS2 (usually none): Google's answers may have changed shape")
+        problems.append(f"{len(skipped) + len(unanswered)} families unanswered or unusual (usually none): Google's answers may have changed shape")
 
     added, removed = sorted(new.keys() - old.keys()), sorted(old.keys() - new.keys())
+    # Google retires a family now and then; losing many at once means a truncated font list.
+    if len(removed) > max(20, len(old) // 20):
+        problems.append(f"{len(removed)} families would be removed: Google's font list may be incomplete")
     common = sorted(old.keys() & new.keys())
     bumped = [n for n in common if old[n][0] != new[n][0]]
     restyled = [n for n in common if old[n][1].keys() != new[n][1].keys()]
@@ -267,18 +302,22 @@ def command_reckon(arguments):
     if unstable:
         problems.append(f"file IDs changed without a version bump: {', '.join(unstable[:10])}")
 
-    lines.append(f"Catalogue: {len(new)} families, {count} files, {len(data) / 1024:.0f} KB; {len(sample) - len(dead)} of {len(sample)} committed URLs alive.")
+    lines.append(f"Catalogue: {len(new)} families, {count} files, {len(data) / 1024:.0f} KB; {len(checked) - len(dead)} of {len(checked)} committed URLs alive.")
     for label, names in (("Added", added), ("Removed", removed), ("New versions", bumped), ("Styles changed", restyled),
-                         ("Left to CSS2", sorted(skipped | set(unanswered)))):
+                         ("No answer, kept as committed", kept), ("Left to CSS2", sorted(skipped | set(unanswered)))):
         if names:
             lines.append(f"- **{label} ({len(names)}):** {', '.join(names[:30])}{' …' if len(names) > 30 else ''}")
     lines += [f"- **Problem:** {problem}" for problem in problems]
 
-    # The header's build day changes every run; only a content change is worth a refresh.
-    changed = committed[:8] + committed[12:] != data[:8] + data[12:]
-    if changed and not problems:
+    # The library trusts a catalogue for a year from its build day, so rebuild an unchanged one early.
+    age = (datetime.datetime.now(datetime.timezone.utc).date() - datetime.date(1970, 1, 1)).days - struct.unpack_from("<I", old_data, 8)[0] if old_data else 0
+    changed = old != new or age > REFRESH_AFTER_DAYS
+    refresh = changed and not problems
+    if refresh:
         write(BUNDLED, data)
-    lines.append("Refreshed the catalogue." if changed and not problems else "No refresh." if not changed else "Not refreshed: fix the problems first.")
+        lines.append("Refreshed the catalogue." if old != new else f"Refreshed the catalogue's build day: it was {age} days old.")
+    else:
+        lines.append("Not refreshed: fix the problems first." if problems else "No refresh.")
     summary = "\n".join(lines) + "\n"
     print(summary, end="")
     for path in (arguments.summary, os.environ.get("GITHUB_STEP_SUMMARY")):
@@ -287,7 +326,7 @@ def command_reckon(arguments):
                 file.write(summary)
     if os.environ.get("GITHUB_OUTPUT"):
         with open(os.environ["GITHUB_OUTPUT"], "a") as file:
-            file.write(f"changed={'true' if changed and not problems else 'false'}\n")
+            file.write(f"changed={'true' if refresh else 'false'}\n")
     if problems:
         sys.exit(1)
 
