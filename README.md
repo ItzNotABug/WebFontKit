@@ -33,8 +33,7 @@ Requires iOS 17+ or macOS 14+, and Xcode 26+.
 ```swift
 Text("Hello").font(web: "Lobster", size: 24)
 Text("Hello").font(web: "Inter", size: 17, weight: .bold, italic: true)
-Text("12:45").font(web: "Bebas Neue", fixedSize: 64)
-// ignores Dynamic Type
+Text("12:45").font(web: "Bebas Neue", fixedSize: 64)  // ignores Dynamic Type
 ```
 
 <details>
@@ -48,8 +47,7 @@ Text("Hello").font(web: "Pacifico", size: 28) { phase in
     case .loaded:
         showSpinner = false
     case .failed(let error):
-        print(error)
-    // .notFound, .offline, …
+        print(error)  // .notFound, .offline, …
     }
 }
 ```
@@ -79,7 +77,7 @@ WebFonts.shared.configure(.init(directory: appGroupURL))
 <summary><b>Prefetching</b></summary>
 
 ```swift
-let results = await WebFonts.shared.load(["Lobster", "Caveat", "Inter"]) // never throws
+let results = await WebFonts.shared.load(["Lobster", "Caveat", "Inter"])  // never throws
 for (family, error) in results.failed {
     print(family, error)
 }
@@ -137,17 +135,15 @@ struct MyClient: FontSource {
 <summary><b>Storage, stored fonts and events</b></summary>
 
 ```swift
-WebFonts.shared.configure(.init(storage: .session))
-// keep fonts for this launch only
+WebFonts.shared.configure(.init(storage: .session))  // keep fonts for this launch only
 
-let stored = WebFonts.shared.downloaded // family, style, PostScript name, size, date
+let stored = WebFonts.shared.downloaded  // family, style, PostScript name, size, date
 try await WebFonts.shared.remove("Lobster")
 try await WebFonts.shared.removeAll()
 
-for await event in WebFonts.shared.events {
+for await event in WebFonts.shared.events {  // loads, failures, removals
     print(event)
 }
-// loads, failures, removals
 ```
 
 </details>
@@ -165,7 +161,7 @@ for await event in WebFonts.shared.events {
 
 - **Logging.** Logs go to the unified log under the `com.itznotabug.webfontkit` subsystem, with file paths kept private.
 
-- **Licences.** Google Fonts are open source, mostly under the SIL Open Font License. See
+- **Licenses.** Google Fonts are open source, mostly under the SIL Open Font License. See
   Google's [attributions](https://fonts.google.com/attribution).
 
 For the full guide (styles, system fonts, widgets, self-hosting), open the package in Xcode and choose **Product › Build
@@ -190,4 +186,4 @@ before a release. Both need [XcodeGen](https://github.com/yonaskolb/XcodeGen) fo
 
 ## License
 
-Apache 2.0; see [LICENSE](LICENSE). Fonts keep their own licences.
+Apache 2.0; see [LICENSE](LICENSE). Fonts keep their own licenses.
