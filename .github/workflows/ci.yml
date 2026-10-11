@@ -3,9 +3,9 @@ name: CI
 on:
   push:
     branches: [main]
-    paths-ignore: [README.md, LICENSE, .gitignore, "Example/**", "Sources/WebFontKit/WebFontKit.docc/**", scripts/build.sh, scripts/verify.sh]
+    paths-ignore: ["**/*.md", LICENSE, .gitignore, "Example/**", "Sources/WebFontKit/WebFontKit.docc/**", scripts/build.sh, scripts/verify.sh, scripts/catalog.sh]
   pull_request:
-    paths-ignore: [README.md, LICENSE, .gitignore, "Example/**", "Sources/WebFontKit/WebFontKit.docc/**", scripts/build.sh, scripts/verify.sh]
+    paths-ignore: ["**/*.md", LICENSE, .gitignore, "Example/**", "Sources/WebFontKit/WebFontKit.docc/**", scripts/build.sh, scripts/verify.sh, scripts/catalog.sh]
   workflow_dispatch:
 
 permissions:
