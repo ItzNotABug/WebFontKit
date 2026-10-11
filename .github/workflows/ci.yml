@@ -3,9 +3,7 @@ name: CI
 on:
   push:
     branches: [main]
-    paths-ignore: ["**/*.md", LICENSE, .gitignore, "Example/**", "Sources/WebFontKit/WebFontKit.docc/**", scripts/build.sh, scripts/verify.sh, scripts/catalog.sh, scripts/catalog.py, scripts/reckon.sh, .github/workflows/reckon.yml]
   pull_request:
-    paths-ignore: ["**/*.md", LICENSE, .gitignore, "Example/**", "Sources/WebFontKit/WebFontKit.docc/**", scripts/build.sh, scripts/verify.sh, scripts/catalog.sh, scripts/catalog.py, scripts/reckon.sh, .github/workflows/reckon.yml]
   workflow_dispatch:
 
 permissions:
@@ -15,18 +13,50 @@ concurrency:
   group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
-env:
-  DEVELOPER_DIR: /Applications/Xcode_26.6.app/Contents/Developer
-
 defaults:
   run:
     shell: bash
 
 jobs:
+  changes:
+    name: Changes
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    outputs:
+      code: ${{ steps.diff.outputs.code }}
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+
+      - id: diff
+        env:
+          BEFORE: ${{ github.event.before }}
+        run: |
+          case "$GITHUB_EVENT_NAME" in
+            pull_request) files=$(git diff --name-only HEAD^1 HEAD) ;;
+            push) files=$(git diff --name-only "$BEFORE" HEAD) ;;
+            *) echo "code=true" >> "$GITHUB_OUTPUT"; exit 0 ;;
+          esac
+          code=false
+          while IFS= read -r file; do
+            case "$file" in
+              "" | *.md | LICENSE | .gitignore | Example/* | Sources/WebFontKit/WebFontKit.docc/* | \
+              scripts/build.sh | scripts/verify.sh | scripts/catalog.sh | scripts/catalog.py | scripts/reckon.sh | \
+              .github/workflows/reckon.yml) ;;
+              *) code=true; break ;;
+            esac
+          done <<< "$files"
+          echo "code=$code" >> "$GITHUB_OUTPUT"
+
   test:
     name: ${{ matrix.name }}
+    needs: changes
+    if: needs.changes.outputs.code == 'true'
     runs-on: macos-26
     timeout-minutes: 15
+    env:
+      DEVELOPER_DIR: /Applications/Xcode_26.6.app/Contents/Developer
     strategy:
       matrix:
         include:
@@ -56,3 +86,13 @@ jobs:
           path: .build/logs
           include-hidden-files: true
           if-no-files-found: ignore
+
+  ci:
+    name: CI
+    needs: [changes, test]
+    if: always()
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - if: contains(needs.*.result, 'failure') || contains(needs.*.result, 'cancelled')
+        run: exit 1
