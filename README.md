@@ -139,17 +139,21 @@ for await event in WebFonts.shared.events { print(event) }  // loads, failures, 
 
 ## Good to know
 
-- **Fast first loads.** A bundled catalogue of Google's file URLs (nearly every family, ~133 KB) skips Google's lookup, so a new font downloads in one request; anything it can't answer falls back to the lookup. A weekly job keeps it current.
-- **Load the styles you draw.** iOS never fakes bold or italic for a downloaded font. A style the family lacks draws its regular face.
-- **Privacy.** The default source sends the user's IP address to Google, like any web font. Say so in your privacy policy, or self-host.
-- **Logs.** WebFontKit logs to the unified log under the subsystem `com.itznotabug.webfontkit`, with file URLs private.
-- **Licences.** Google Fonts are open-licensed, mostly under the SIL OFL; see the [attributions](https://fonts.google.com/attribution).
+- **Fast first loads.** A bundled catalogue of Google's font URLs (~133 KB) means a new font is a single download. Anything it doesn't cover asks Google instead, and a weekly job keeps it current.
+
+- **Load every style you draw.** iOS never fakes bold or italic for a downloaded font. A style the family doesn't have draws in its regular face.
+
+- **Privacy.** Like any web font, the default source sends the user's IP address to Google. Mention it in your privacy policy, or self-host.
+
+- **Logging.** Logs go to the unified log under the `com.itznotabug.webfontkit` subsystem, with file paths kept private.
+
+- **Licences.** Google Fonts are open source, mostly under the SIL Open Font License. See Google's [attributions](https://fonts.google.com/attribution).
 
 For the full guide (styles, system fonts, widgets, self-hosting), open the package in Xcode and choose **Product › Build Documentation**.
 
 ## Example app
 
-A showcase in `Example/`: try any family, browse a type gallery, manage stored fonts, and watch live events. Open `Example/WebFontKitExample.xcodeproj` and run **Showcase**. For a device, put `DEVELOPMENT_TEAM = <your team ID>` in `Example/Signing.local.xcconfig`.
+A showcase in `Example/`: try any family, browse a type gallery, manage stored fonts, and watch live events. Open `Example/WebFontKitExample.xcodeproj` and run **Showcase**. For a device, put your `DEVELOPMENT_TEAM` and a `BUNDLE_ID_PREFIX` you own in `Example/Signing.local.xcconfig`.
 
 ## Development
 
