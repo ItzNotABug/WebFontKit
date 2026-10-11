@@ -65,15 +65,18 @@ enum Downloader {
         session: URLSession,
         delegate: DataTaskDelegate
     ) async throws -> DataTaskDelegate.Outcome {
-        try await withTaskCancellationHandler {
+        // A request is never started for a caller that has already gone.
+        try Task.checkCancellation()
+        return try await withTaskCancellationHandler {
             try await withCheckedThrowingContinuation { continuation in
                 delegate.start(continuation)
                 let task = session.dataTask(with: request)
                 task.delegate = delegate
-                let cancelled = delegate.attach(task)
-                task.resume()
-                if cancelled {
+                // Cancelled while attaching: cancel before resuming, so no bytes can arrive first.
+                if delegate.attach(task) {
                     task.cancel()
+                } else {
+                    task.resume()
                 }
             }
         } onCancel: {
