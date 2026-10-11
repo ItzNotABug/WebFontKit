@@ -33,7 +33,8 @@ Requires iOS 17+ or macOS 14+, and Xcode 26+.
 ```swift
 Text("Hello").font(web: "Lobster", size: 24)
 Text("Hello").font(web: "Inter", size: 17, weight: .bold, italic: true)
-Text("12:45").font(web: "Bebas Neue", fixedSize: 64)  // ignores Dynamic Type
+// fixedSize ignores Dynamic Type
+Text("12:45").font(web: "Bebas Neue", fixedSize: 64)
 ```
 
 <details>
@@ -47,7 +48,8 @@ Text("Hello").font(web: "Pacifico", size: 28) { phase in
     case .loaded:
         showSpinner = false
     case .failed(let error):
-        print(error)  // .notFound, .offline, …
+        // .notFound, .offline, …
+        print(error)
     }
 }
 ```
@@ -77,7 +79,7 @@ WebFonts.shared.configure(.init(directory: appGroupURL))
 <summary><b>Prefetching</b></summary>
 
 ```swift
-let results = await WebFonts.shared.load(["Lobster", "Caveat", "Inter"])  // never throws
+let results = await WebFonts.shared.load(["Lobster", "Caveat", "Inter"]) // never throws
 for (family, error) in results.failed {
     print(family, error)
 }
@@ -135,14 +137,15 @@ struct MyClient: FontSource {
 <summary><b>Storage, stored fonts and events</b></summary>
 
 ```swift
-WebFonts.shared.configure(.init(storage: .session))  // keep fonts for this launch only
+// keep fonts for this launch only
+WebFonts.shared.configure(.init(storage: .session))
 
-let stored = WebFonts.shared.downloaded  // family, style, PostScript name, size, date
+let stored = WebFonts.shared.downloaded // family, style, PostScript name, size, date
 try await WebFonts.shared.remove("Lobster")
 try await WebFonts.shared.removeAll()
 
-for await event in WebFonts.shared.events {  // loads, failures, removals
-    print(event)
+for await event in WebFonts.shared.events {
+    print(event) // loads, failures, removals
 }
 ```
 
