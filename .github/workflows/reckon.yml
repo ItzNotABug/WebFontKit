@@ -1,11 +1,8 @@
 name: Reckon
 
-# Twice a month, rebuild the Google Fonts catalogue and compare it with the committed one.
-# A content change opens (or updates) one refresh PR; a broken script, dead committed URLs or
-# file IDs changing within a version fail the run instead.
 on:
   schedule:
-    - cron: "17 6 1,15 * *"
+    - cron: "17 6 * * 1"
   workflow_dispatch:
 
 permissions:
@@ -42,5 +39,4 @@ jobs:
           else
             gh pr create --head catalog-refresh --base main --title "Refresh the Google Fonts catalogue" --body-file "$RUNNER_TEMP/reckon.md"
           fi
-          # A PR opened with the Actions token starts no workflows, so start CI on it here.
           gh workflow run ci.yml --ref catalog-refresh
