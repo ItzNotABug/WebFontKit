@@ -130,6 +130,8 @@ public final class WebFonts: Sendable {
             let next = Snapshot(configuration, sourceID: state.current.sourceID + 1, root: root)
             let storeChanged = next.directory != state.current.directory
             state.current = next
+            // Misses seen through another session or proxy may not hold for this one.
+            state.catalogMisses = []
             if state.warmUpsStarted == 0 || storeChanged {
                 startWarmUp(&state)
             }

@@ -138,7 +138,7 @@ for await event in WebFonts.shared.events { print(event) }  // loads, failures, 
 
 ## Good to know
 
-- **Fast first loads.** A bundled catalogue of Google's file URLs (all 1,950 families, 133 KB) skips Google's lookup, so a new font downloads in one request; anything it can't answer falls back to the lookup. `scripts/catalog.sh` refreshes it.
+- **Fast first loads.** A bundled catalogue of Google's file URLs (nearly every family, ~130 KB) skips Google's lookup, so a new font downloads in one request; anything it can't answer falls back to the lookup. `scripts/catalog.sh` refreshes it.
 - **Load the styles you draw.** iOS never fakes bold or italic for a downloaded font. A style the family lacks draws its regular face.
 - **Privacy.** The default source sends the user's IP address to Google, like any web font. Say so in your privacy policy, or self-host.
 - **Logs.** WebFontKit logs to the unified log under the subsystem `com.itznotabug.webfontkit`, with file URLs private.

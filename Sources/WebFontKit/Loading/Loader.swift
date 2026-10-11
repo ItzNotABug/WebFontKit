@@ -312,14 +312,14 @@ extension WebFonts {
         }
     }
 
-    /// A catalogued URL Google answers with an error status falls back to CSS2, as without a
-    /// catalogue, and the family skips the catalogue from then on.
+    /// A catalogued file Google reports gone falls back to CSS2, and the family skips the catalogue
+    /// from then on. A rate limit or server error fails as usual: CSS2 would name the same file.
     private func fetchResolved(_ url: URL, fromCatalog: Bool, key: StyleKey, fetcher: FaceFetcher,
                                snapshot: Snapshot) async throws -> ValidatedFace {
         do {
             return try await fetcher.fetchResolved(url)
-        } catch let error as WebFontError where fromCatalog && error.isStatusFailure {
-            if error.meansGone { state.withLock { _ = $0.catalogMisses.insert(key.family) } }
+        } catch let error as WebFontError where fromCatalog && error.meansGone {
+            state.withLock { _ = $0.catalogMisses.insert(key.family) }
             log("load", .info, "The catalogued URL for \(key.face) failed (\(error)); asking CSS2")
             let fresh = try await CSS2.resolve(family: key.family, style: key.style, session: snapshot.session, logSink: logSink)
             return try await fetcher.fetchResolved(fresh)
@@ -440,15 +440,6 @@ extension WebFonts {
 }
 
 private extension WebFontError {
-    /// The server answered, but not with the file: a 4xx or 5xx.
-    var isStatusFailure: Bool {
-        switch self {
-        case .notFound, .server: true
-        default: false
-        }
-    }
-
-    /// Not a passing failure: rate limits and server errors aren't remembered.
     var meansGone: Bool {
         switch self {
         case .notFound, .server(statusCode: 403), .server(statusCode: 410): true

@@ -93,7 +93,7 @@ def fetch_rows():
         rows += [row for found in pool.map(css, [[name] for name in missing]) for row in found]
     unanswered = sorted(set(names) - {row[0] for row in rows})
     if unanswered:
-        sys.exit(f"Google answered nothing for {len(unanswered)} families, so nothing was written: {', '.join(unanswered[:10])}")
+        print(f"Left to CSS2, no answer: {', '.join(unanswered)}", file=sys.stderr)
     return rows
 
 rows = json.load(open(rows_path)) if rows_path else fetch_rows()
@@ -109,6 +109,10 @@ for name, style, url in rows:
     try:
         identifier = base64.urlsafe_b64decode(match.group(3) + "=" * (-len(match.group(3)) % 4))
     except binascii.Error:
+        skipped.add(name)
+        continue
+    # The library re-encodes the bytes, so only an ID that round-trips exactly can be stored.
+    if base64.urlsafe_b64encode(identifier).decode().rstrip("=") != match.group(3):
         skipped.add(name)
         continue
     # Two files for one style (subsets, say) or two versions in one family: leave it to CSS2.
@@ -212,7 +216,8 @@ for name in names:
     for (italic, weight) in families[name][1]:
         decoded = decode(name, italic, weight)
         url = rebuilt_url(name, *decoded) if decoded else None
-        assert url == sources[(name, italic, weight)], f"round trip failed: {name} {weight}{'i' if italic else ''}"
+        if url != sources[(name, italic, weight)]:
+            sys.exit(f"Round trip failed for {name} {weight}{'i' if italic else ''}: the writer and reader disagree.")
         checked += 1
 
 # Written beside the target, then renamed: an interrupted run never leaves a half-written file.

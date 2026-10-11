@@ -76,6 +76,19 @@ struct GoogleFontsCatalogTests {
         #expect(!Self.catalog.isCurrent(at: built.addingTimeInterval(366 * 86_400)))
     }
 
+    @Test("the shipped catalogue names every fixture style's file, listed and computed, upright and italic")
+    func shippedMatchesGoogle() throws {
+        let shipped = try #require(GoogleFontsCatalog.shipped)
+        for row in Self.rows {
+            let style = Self.style(row.style)
+            let url = try #require(shipped.urls(family: row.family, styles: [style])?[style], "\(row.family) \(row.style)")
+            let google = try #require(URL(string: row.url))
+            // File IDs outlive font versions, so a refreshed catalogue still matches these rows.
+            #expect(url.lastPathComponent == google.lastPathComponent, "\(row.family) \(row.style)")
+            #expect(url.pathComponents[2] == google.pathComponents[2])
+        }
+    }
+
     @Test("the shipped catalogue opens and knows Lobster by its stable file ID")
     func bundled() throws {
         let url = try #require(GoogleFontsCatalog.shipped?.urls(family: "Lobster", styles: [.regular])?[.regular])

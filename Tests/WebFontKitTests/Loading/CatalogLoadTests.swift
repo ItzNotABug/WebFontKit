@@ -21,7 +21,7 @@ struct CatalogLoadTests {
         #expect(fonts.postScriptName(family: "Lobster", style: .regular) == "Lobster-Regular")
     }
 
-    @Test("a catalogued URL Google answers with an error status falls back to CSS2 and still loads", arguments: [404, 403, 410, 503])
+    @Test("a catalogued file Google reports gone falls back to CSS2 and still loads", arguments: [404, 403, 410])
     func goneURLFallsBack(status: Int) async throws {
         let harness = Harness()
         harness.server.respond(to: Self.lobsterURL, with: StubResponse(statusCode: status))
@@ -54,7 +54,7 @@ struct CatalogLoadTests {
         #expect(!harness.server.requests.contains { $0.url == latoBold }, "bold's catalogued URL was never tried")
     }
 
-    @Test("a passing server error falls back without turning the catalogue off for the family")
+    @Test("a server error fails as usual, with no CSS2 lookup, and leaves the catalogue on for the family")
     func transientErrorKeepsCatalogue() async throws {
         let harness = Harness()
         let latoRegular = try #require(GoogleFontsCatalogTests.catalog.urls(family: "Lato", styles: [.regular])?[.regular])
@@ -64,10 +64,28 @@ struct CatalogLoadTests {
         let fonts = harness.makeFonts(catalog: GoogleFontsCatalogTests.catalog)
         try await harness.warmUp(fonts)
 
-        _ = try? await fonts.load("Lato", styles: [.regular])
+        await #expect(throws: WebFontError.server(statusCode: 503)) { try await fonts.load("Lato", styles: [.regular]) }
+        #expect(harness.css2Requests == 0)
         _ = try? await fonts.load("Lato", styles: [.bold])
 
         #expect(harness.server.requests.contains { $0.url == latoBold }, "bold still came from the catalogue")
+    }
+
+    @Test("configure forgets which families' catalogued files were gone")
+    func configureForgetsMisses() async throws {
+        let harness = Harness()
+        let latoRegular = try #require(GoogleFontsCatalogTests.catalog.urls(family: "Lato", styles: [.regular])?[.regular])
+        let latoBold = try #require(GoogleFontsCatalogTests.catalog.urls(family: "Lato", styles: [.bold])?[.bold])
+        harness.server.respond(to: latoRegular, with: StubResponse(statusCode: 404))
+        harness.server.serveGoogle()
+        let fonts = harness.makeFonts(catalog: GoogleFontsCatalogTests.catalog)
+        try await harness.warmUp(fonts)
+        _ = try? await fonts.load("Lato", styles: [.regular])
+
+        fonts.configure(WebFonts.Configuration(directory: harness.directory.url, session: harness.session))
+        _ = try? await fonts.load("Lato", styles: [.bold])
+
+        #expect(harness.server.requests.contains { $0.url == latoBold })
     }
 
     @Test("the catalogue is read on the first Google lookup, not when WebFonts is created")

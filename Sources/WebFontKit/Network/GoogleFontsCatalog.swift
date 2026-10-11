@@ -15,9 +15,18 @@ struct GoogleFontsCatalog: Sendable {
     static let bundled: GoogleFontsCatalog? = shipped.flatMap { $0.isCurrent(at: .now) ? $0 : nil }
 
     /// The file in the package, whatever its age.
-    static let shipped: GoogleFontsCatalog? = Bundle.module.url(forResource: "GoogleFonts", withExtension: "catalog")
+    static let shipped: GoogleFontsCatalog? = resourceBundle()?.url(forResource: "GoogleFonts", withExtension: "catalog")
         .flatMap { try? Data(contentsOf: $0, options: .alwaysMapped) }
         .flatMap(GoogleFontsCatalog.init(data:))
+
+    /// Where SwiftPM and Xcode put the package's resources. Not `Bundle.module`: its accessor traps
+    /// when the bundle is missing, and a missing catalogue should only mean CSS2 lookups.
+    private static func resourceBundle() -> Bundle? {
+        let library = Bundle(for: BundleToken.self)
+        let places = [Bundle.main.resourceURL, Bundle.main.bundleURL, library.resourceURL,
+                      library.bundleURL.deletingLastPathComponent()]
+        return places.lazy.compactMap { $0.flatMap { Bundle(url: $0.appending(component: "WebFontKit_WebFontKit.bundle")) } }.first
+    }
 
     static let lifetime: TimeInterval = 365 * 24 * 60 * 60
 
@@ -83,6 +92,8 @@ struct GoogleFontsCatalog: Sendable {
         return nil
     }
 }
+
+private final class BundleToken {}
 
 /// Bounds-checked little-endian reads; every one answers nil past the end.
 private struct Cursor {
