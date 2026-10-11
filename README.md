@@ -5,11 +5,11 @@
 [![Platforms](https://img.shields.io/badge/platforms-iOS%2017%2B%20%7C%20macOS%2014%2B-0A84FF?logo=apple&logoColor=white)](#installation)
 [![License](https://img.shields.io/badge/license-Apache%202.0-blue)](LICENSE)
 
-Any Google Font by name, in one line of SwiftUI. Downloaded once, kept on disk, drawn by Apple's own font APIs.
+Any Google Font by name, in one line of SwiftUI. Downloaded once, kept on disk, and registered with the system like any bundled font.
 
-```swift
-Text("Hello").font(web: "Lobster", size: 24)
-```
+<p align="center">
+  <img src=".github/assets/hero.webp" alt="Text(&quot;Hello&quot;).font(web: &quot;Lobster&quot;, size: 24) drawing Hello in Lobster on an iPhone" width="800">
+</p>
 
 - Shows the system font until the font is ready, then swaps it in.
 - Scales with Dynamic Type, and works offline after the first load.
@@ -30,6 +30,7 @@ Requires iOS 17+ or macOS 14+, and Xcode 26+.
 ## Usage
 
 ```swift
+Text("Hello").font(web: "Lobster", size: 24)
 Text("Hello").font(web: "Inter", size: 17, weight: .bold, italic: true)
 Text("12:45").font(web: "Bebas Neue", fixedSize: 64)  // ignores Dynamic Type
 ```
@@ -138,7 +139,7 @@ for await event in WebFonts.shared.events { print(event) }  // loads, failures, 
 
 ## Good to know
 
-- **Fast first loads.** A bundled catalogue of Google's file URLs (nearly every family, ~130 KB) skips Google's lookup, so a new font downloads in one request; anything it can't answer falls back to the lookup. `scripts/catalog.sh` refreshes it.
+- **Fast first loads.** A bundled catalogue of Google's file URLs (nearly every family, ~133 KB) skips Google's lookup, so a new font downloads in one request; anything it can't answer falls back to the lookup. A weekly job keeps it current.
 - **Load the styles you draw.** iOS never fakes bold or italic for a downloaded font. A style the family lacks draws its regular face.
 - **Privacy.** The default source sends the user's IP address to Google, like any web font. Say so in your privacy policy, or self-host.
 - **Logs.** WebFontKit logs to the unified log under the subsystem `com.itznotabug.webfontkit`, with file URLs private.
