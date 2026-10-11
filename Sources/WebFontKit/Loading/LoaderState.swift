@@ -16,7 +16,6 @@ struct StyleKey: Hashable, Sendable {
 struct StyleJob: Sendable {
     enum Stage: Sendable {
         case resolving(UUID)
-        /// The file's URL, from the bundled catalogue or a CSS2 answer.
         case ready(URL, fromCatalog: Bool)
         case fetching
         case validated(ValidatedFace)

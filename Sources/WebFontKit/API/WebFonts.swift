@@ -91,7 +91,7 @@ public final class WebFonts: Sendable {
     let logSink: any LogSink
     let root: URL?
     let hub = EventHub()
-    /// File URLs for Google's families, so a first load can skip the CSS2 lookup. Nil in tests.
+    /// Read on the first Google lookup, so creating `shared` does no I/O.
     let catalog: @Sendable () -> GoogleFontsCatalog?
     let state: Locked<LoaderState>
     #if DEBUG

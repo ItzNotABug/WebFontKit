@@ -11,9 +11,7 @@ import Foundation
 ///   either a base weight ÷ 100 (u8), the weight float's offset (u8) and one ID, or one ID per
 ///   weight in ascending order; each ID is a length (u8) and its bytes.
 struct GoogleFontsCatalog: Sendable {
-    /// The catalogue shipped with the library, mapped on first use.
-    /// Nil once it is a year old: Google keeps serving old versions, so an old catalogue would
-    /// pin them; CSS2 answers with the current ones.
+    /// Mapped on first use. Nil once a year old: Google keeps serving old versions, so it would pin them.
     static let bundled: GoogleFontsCatalog? = Bundle.module.url(forResource: "GoogleFonts", withExtension: "catalog")
         .flatMap { try? Data(contentsOf: $0, options: .alwaysMapped) }
         .flatMap(GoogleFontsCatalog.init(data:))

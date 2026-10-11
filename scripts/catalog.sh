@@ -5,25 +5,29 @@
 #   scripts/catalog.sh                       fetch from Google and write the bundled file
 #   scripts/catalog.sh --rows rows.json OUT  build OUT from saved rows (offline; tests)
 #
-# Writes only what a lookup needs: names, versions and IDs. Every entry is decoded back
-# and compared with Google's URL before the file is written.
+# Keeps only names, versions and IDs. The layout is documented in GoogleFontsCatalog.swift.
 set -euo pipefail
-source "$(dirname "$0")/common.sh"
+ROOT="$(cd "$(dirname "$0")/.." && pwd)"
+usage="usage: $0 [--rows rows.json OUT]"
 # Relative --rows paths are the caller's, so resolve them before moving to the repo root.
 absolute() { case "$1" in /*) echo "$1" ;; *) echo "$PWD/$1" ;; esac; }
 
 OUT="$ROOT/Sources/WebFontKit/Resources/GoogleFonts.catalog"
 ROWS=""
-if [ "${1:-}" = "--rows" ]; then
-    ROWS="$(absolute "${2:?usage: $0 --rows rows.json OUT}")"
-    OUT="$(absolute "${3:?usage: $0 --rows rows.json OUT}")"
-fi
+case "$#:${1:-}" in
+    0:) ;;
+    3:--rows) ROWS="$(absolute "$2")"; OUT="$(absolute "$3")" ;;
+    *) echo "$usage" >&2; exit 2 ;;
+esac
 cd "$ROOT"
 
 python3 - "$OUT" "$ROWS" <<'EOF'
-import base64, binascii, concurrent.futures, datetime, json, re, struct, sys, time, urllib.parse
+import base64, binascii, concurrent.futures, datetime, json, os, re, struct, sys, time, urllib.parse
 
 out, rows_path = sys.argv[1], sys.argv[2]
+# The library's own user agent, so the catalogue lists the files a CSS2 lookup would return.
+version = re.search(r'libraryVersion = "([^"]+)"', open("Sources/WebFontKit/Network/LibraryVersion.swift").read()).group(1)
+USER_AGENT = f"WebFontKit/{version}"
 URL = re.compile(r"https://fonts\.gstatic\.com/s/([a-z0-9]+)/v(\d+)/([A-Za-z0-9_-]+)\.ttf$")
 
 def slug(family):
@@ -38,10 +42,12 @@ def fetch_rows():
         # One kept-alive connection per worker: no TLS handshake per request. Rate limits,
         # server errors and dropped connections are retried with backoff.
         for attempt in range(5):
+            if attempt:
+                time.sleep(0.5 * 2 ** attempt)
             connection = getattr(local, host, None) or http.client.HTTPSConnection(host, timeout=30)
             setattr(local, host, connection)
             try:
-                connection.request("GET", path, headers={"User-Agent": "WebFontKit-catalog"})
+                connection.request("GET", path, headers={"User-Agent": USER_AGENT})
                 response = connection.getresponse()
                 body = response.read().decode()
                 if response.status == 200:
@@ -51,10 +57,12 @@ def fetch_rows():
             except (OSError, http.client.HTTPException):
                 connection.close()
                 setattr(local, host, None)
-            time.sleep(0.5 * 2 ** attempt)
         return ""
 
-    metadata = json.loads(get("fonts.google.com", "/metadata/fonts").removeprefix(")]}'"))
+    listing = get("fonts.google.com", "/metadata/fonts")
+    if not listing:
+        sys.exit("Could not fetch Google's font list.")
+    metadata = json.loads(listing.removeprefix(")]}'"))
     families = {f["family"]: list(f["fonts"]) for f in metadata["familyMetadataList"]}
 
     def query(name):
@@ -100,7 +108,9 @@ for name, style, url in rows:
     except binascii.Error:
         skipped.add(name)
         continue
-    sources[(name, style.endswith("i"), weight)] = url
+    # Two files for one style (subsets, say) or two versions in one family: leave it to CSS2.
+    if sources.setdefault((name, style.endswith("i"), weight), url) != url:
+        skipped.add(name)
     entry = families.setdefault(name, [int(match.group(2)), {}])
     if entry[0] != int(match.group(2)):
         skipped.add(name)
@@ -126,13 +136,6 @@ def weight_offset(group):
         offset = hits[0]
     return offset
 
-# Layout (little-endian):
-#   header  "WFKC" | format u8 = 1 | reserved u8 | family count u16 | catalogue day u32 (days since 1970)
-#   index   family count x u32: record offsets, records sorted by the family's UTF-8 bytes
-#   record  name length u8 | name | version u16 | group count u8 | groups
-#   group   flags u8 (1 italic, 2 computed) | weights u16 (bit n: weight n x 100)
-#           computed: base weight / 100 u8 | float offset u8 | ID length u8 | ID
-#           listed:   per weight, ascending: ID length u8 | ID
 names = sorted(families, key=lambda n: n.encode())
 records, offsets = bytearray(), []
 for name in names:
@@ -154,7 +157,7 @@ for name in names:
             records += bytes([int(italic)]) + struct.pack("<H", mask)
             for _, identifier in group:
                 records += bytes([len(identifier)]) + identifier
-day = (datetime.date.today() - datetime.date(1970, 1, 1)).days
+day = (datetime.datetime.now(datetime.timezone.utc).date() - datetime.date(1970, 1, 1)).days
 header = b"WFKC" + bytes([1, 0]) + struct.pack("<HI", len(names), day)
 index_size = 4 * len(names)
 data = header + b"".join(struct.pack("<I", len(header) + index_size + o) for o in offsets) + records
@@ -209,7 +212,10 @@ for name in names:
         assert url == sources[(name, italic, weight)], f"round trip failed: {name} {weight}{'i' if italic else ''}"
         checked += 1
 
-open(out, "wb").write(data)
+# Written beside the target, then renamed: an interrupted run never leaves a half-written file.
+with open(out + ".partial", "wb") as file:
+    file.write(data)
+os.replace(out + ".partial", out)
 print(f"{out}: {len(names)} families, {checked} files, {len(data) / 1024:.0f} KB"
       + (f"; {len(skipped)} families left to CSS2 (unusual URLs)" if skipped else ""))
 EOF
