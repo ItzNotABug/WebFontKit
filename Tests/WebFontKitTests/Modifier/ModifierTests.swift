@@ -156,7 +156,6 @@ struct ModifierTests {
         let harness = Harness()
         let fonts = harness.makeFonts()
         try await harness.warmUp(fonts)
-        // Built with the rejected name, so no earlier load of the default family can end first.
         let model = ModifierModel()
         model.family = "Lob$ter"
         model.weight = .bold
