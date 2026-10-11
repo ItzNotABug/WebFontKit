@@ -41,7 +41,7 @@ jobs:
           code=false
           while IFS= read -r file; do
             case "$file" in
-              "" | *.md | LICENSE | .gitignore | Example/* | Sources/WebFontKit/WebFontKit.docc/* | \
+              "" | *.md | LICENSE | .gitignore | .spi.yml | .github/assets/* | Example/* | Sources/WebFontKit/WebFontKit.docc/* | \
               scripts/build.sh | scripts/verify.sh | scripts/catalog.sh | scripts/catalog.py | scripts/reckon.sh | \
               .github/workflows/reckon.yml) ;;
               *) code=true; break ;;
