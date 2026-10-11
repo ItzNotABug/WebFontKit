@@ -69,7 +69,7 @@ struct ConfigurationTests {
         await WebFonts.shared.waitForWarmUp()
         #expect(WebFonts.shared.startedWarmUps == 1, "only the configured directory was warmed")
         // shared reads the shipped catalogue while it is current.
-        #expect((WebFonts.shared.catalog() != nil) == (GoogleFontsCatalog.shipped?.isCurrent(at: .now) == true))
+        #expect((WebFonts.shared.catalog() != nil) == (GoogleFontsCatalog.shipped()?.isCurrent(at: .now) == true))
 
         let warmed = WebFonts.shared.state.withLock { $0.current.directory }
         #expect(warmed.path == directory.store.path)

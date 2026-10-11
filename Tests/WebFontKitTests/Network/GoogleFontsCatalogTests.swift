@@ -78,7 +78,7 @@ struct GoogleFontsCatalogTests {
 
     @Test("the shipped catalogue names every fixture style's file, listed and computed, upright and italic")
     func shippedMatchesGoogle() throws {
-        let shipped = try #require(GoogleFontsCatalog.shipped)
+        let shipped = try #require(GoogleFontsCatalog.shipped())
         for row in Self.rows {
             let style = Self.style(row.style)
             let url = try #require(shipped.urls(family: row.family, styles: [style])?[style], "\(row.family) \(row.style)")
@@ -91,7 +91,7 @@ struct GoogleFontsCatalogTests {
 
     @Test("the shipped catalogue opens and knows Lobster by its stable file ID")
     func bundled() throws {
-        let url = try #require(GoogleFontsCatalog.shipped?.urls(family: "Lobster", styles: [.regular])?[.regular])
+        let url = try #require(GoogleFontsCatalog.shipped()?.urls(family: "Lobster", styles: [.regular])?[.regular])
         #expect(url.host == "fonts.gstatic.com")
         #expect(url.path.hasPrefix("/s/lobster/v"))
         #expect(url.lastPathComponent == "neILzCirqoswsqX9_oU.ttf")

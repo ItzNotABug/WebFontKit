@@ -12,12 +12,14 @@ import Foundation
 ///   weight in ascending order; each ID is a length (u8) and its bytes.
 struct GoogleFontsCatalog: Sendable {
     /// Mapped on first use. Nil once a year old: Google keeps serving old versions, so it would pin them.
-    static let bundled: GoogleFontsCatalog? = shipped.flatMap { $0.isCurrent(at: .now) ? $0 : nil }
+    static let bundled: GoogleFontsCatalog? = shipped().flatMap { $0.isCurrent(at: .now) ? $0 : nil }
 
-    /// The file in the package, whatever its age.
-    static let shipped: GoogleFontsCatalog? = resourceBundle()?.url(forResource: "GoogleFonts", withExtension: "catalog")
-        .flatMap { try? Data(contentsOf: $0, options: .alwaysMapped) }
-        .flatMap(GoogleFontsCatalog.init(data:))
+    /// The file in the package, whatever its age. Not kept: an expired one is unmapped at once.
+    static func shipped() -> GoogleFontsCatalog? {
+        resourceBundle()?.url(forResource: "GoogleFonts", withExtension: "catalog")
+            .flatMap { try? Data(contentsOf: $0, options: .alwaysMapped) }
+            .flatMap(GoogleFontsCatalog.init(data:))
+    }
 
     /// Where SwiftPM and Xcode put the package's resources. Not `Bundle.module`: its accessor traps
     /// when the bundle is missing, and a missing catalogue should only mean CSS2 lookups.

@@ -21,7 +21,7 @@ struct CatalogLoadTests {
         #expect(fonts.postScriptName(family: "Lobster", style: .regular) == "Lobster-Regular")
     }
 
-    @Test("a catalogued file Google reports gone falls back to CSS2 and still loads", arguments: [404, 403, 410])
+    @Test("a catalogued file Google reports gone falls back to CSS2 and still loads", arguments: [400, 404, 403, 410])
     func goneURLFallsBack(status: Int) async throws {
         let harness = Harness()
         harness.server.respond(to: Self.lobsterURL, with: StubResponse(statusCode: status))

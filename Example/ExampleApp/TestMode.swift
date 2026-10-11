@@ -106,6 +106,11 @@ final class ExampleStub: URLProtocol {
         return families
     }()
 
+    /// Google's folder for each bundled family ("abrilfatface"), as the catalogue spells it.
+    static let bundledFolders: [String: String] = Dictionary(
+        uniqueKeysWithValues: bundledFamilies.map { ($0.key.lowercased().filter { $0 != " " }, $0.value) }
+    )
+
     override class func canInit(with request: URLRequest) -> Bool { true }
     override class func canonicalRequest(for request: URLRequest) -> URLRequest { request }
     override func stopLoading() {}
@@ -137,8 +142,7 @@ final class ExampleStub: URLProtocol {
         // The folder is the family name from the stub's CSS, or Google's slug ("abrilfatface") from the
         // catalogue. Only regular faces are bundled, so any style's file is the regular one.
         let folder = url.pathComponents.count > 2 ? url.pathComponents[2] : ""
-        let family = Self.bundledFamilies.keys.first { $0 == folder || $0.lowercased().filter { $0.isASCII && ($0.isLetter || $0.isNumber) } == folder }
-        guard let family, let file = Self.bundledFamilies[family],
+        guard let file = Self.bundledFamilies[folder] ?? Self.bundledFolders[folder],
               let data = Bundle.main.url(forResource: file, withExtension: nil).flatMap({ try? Data(contentsOf: $0) })
         else {
             respond(404, type: "text/plain", body: Data(), url: url)
