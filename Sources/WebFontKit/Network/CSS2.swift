@@ -4,6 +4,8 @@ import OSLog
 /// Google's CSS2 API: the one request per family, and reading its answer.
 enum CSS2 {
     static let endpoint = URL(string: "https://fonts.googleapis.com/css2")!
+    /// Where Google serves font files: `<folder>/v<version>/<file ID>.ttf`.
+    static let files = URL(string: "https://fonts.gstatic.com/s")!
 
     static let responseCap = 1024 * 1024
 

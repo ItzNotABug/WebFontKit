@@ -23,11 +23,6 @@ struct GoogleFontsCatalog: Sendable {
     /// when the bundle is missing, and a missing catalogue should only mean CSS2 lookups.
     private static func resourceBundle() -> Bundle? {
         let name = "WebFontKit_WebFontKit.bundle"
-        // Xcode previews name the bundle's folder in the environment.
-        if let path = ProcessInfo.processInfo.environment["PACKAGE_RESOURCE_BUNDLE_PATH"],
-           let bundle = Bundle(url: URL(filePath: path).appending(component: name)) {
-            return bundle
-        }
         let library = Bundle(for: BundleToken.self)
         let places = [Bundle.main.resourceURL, Bundle.main.bundleURL, library.resourceURL, library.bundleURL,
                       library.bundleURL.deletingLastPathComponent()]
@@ -38,7 +33,6 @@ struct GoogleFontsCatalog: Sendable {
 
     private let data: Data
     private let count: Int
-    /// When `scripts/catalog.sh` built it.
     let built: Date
 
     init?(data: Data) {
@@ -71,16 +65,16 @@ struct GoogleFontsCatalog: Sendable {
             guard ids.count == styles.count else { return nil }
             // Google's folder: the name lowercased, spaces dropped (validated names hold nothing else).
             let folder = family.lowercased().filter { $0 != " " }
-            var urls: [FontStyle: URL] = [:]
-            for (style, id) in ids {
-                let name = Data(id).base64EncodedString()
-                    .replacingOccurrences(of: "+", with: "-").replacingOccurrences(of: "/", with: "_")
-                    .trimmingCharacters(in: CharacterSet(charactersIn: "="))
-                guard let url = URL(string: "https://fonts.gstatic.com/s/\(folder)/v\(version)/\(name).ttf") else { return nil }
-                urls[style] = url
-            }
-            return urls
+            return ids.mapValues { Self.fileURL(folder: folder, version: version, id: $0) }
         }
+    }
+
+    /// The ID as unpadded base64url, the form Google's file names use.
+    private static func fileURL(folder: String, version: Int, id: [UInt8]) -> URL {
+        let name = Data(id).base64EncodedString()
+            .replacingOccurrences(of: "+", with: "-").replacingOccurrences(of: "/", with: "_")
+            .trimmingCharacters(in: CharacterSet(charactersIn: "="))
+        return CSS2.files.appending(path: "\(folder)/v\(version)/\(name).ttf")
     }
 
     /// A cursor just past the family's name, found by binary search over the sorted index.
