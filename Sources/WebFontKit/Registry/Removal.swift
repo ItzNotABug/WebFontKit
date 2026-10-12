@@ -54,9 +54,10 @@ extension Registry {
             let sharers = Set(removed.filter(\.registeredHere).map(\.postScriptName)).flatMap { state.takeSharers(named: $0) }
             return (removed, sharers, families)
         }
-        // Sharers only exist beside removed entries, whose families are in `families`.
-        if !families.isEmpty {
-            await bumpGenerations(of: families.sorted())
+        // Sharers can be other families' entries ("lobster" beside "Lobster"): they redraw too.
+        let changed = families.union(sharers.map(\.key.family))
+        if !changed.isEmpty {
+            await bumpGenerations(of: changed)
         }
 
         var failed = false
@@ -135,7 +136,7 @@ extension Registry {
             return (old, old.registeredHere ? state.takeSharers(named: old.postScriptName) : [])
         }
         guard let old else { return [] }
-        await bumpGenerations(of: [key.family])
+        await bumpGenerations(of: Set(sharers.map(\.key.family)).union([key.family]))
         if old.registeredHere, let url = old.fileURL {
             _ = await registrar.unregister(urls: [url])
         }

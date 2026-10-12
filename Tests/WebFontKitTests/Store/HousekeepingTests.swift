@@ -88,6 +88,24 @@ struct HousekeepingTests {
         #expect(await MainActor.run { lowerCounter.value } > before.1)
     }
 
+    @Test("when the other spelling can't register again, its views still redraw")
+    func sharedNameReregisterFails() async throws {
+        let harness = Harness()
+        let registry = harness.makeRegistry()
+        let upper = try harness.storeFont(Fixtures.lobster, family: "Lobster")
+        let lower = try harness.storeFont(Fixtures.lobster, family: "lobster")
+        _ = await registry.register(upper, epochs: nil, store: harness.store)
+        _ = await registry.register(lower, epochs: nil, store: harness.store)
+        let lowerCounter = await MainActor.run { registry.generations.counter(for: "lobster") }
+        let before = await MainActor.run { lowerCounter.value }
+        harness.registrar.scriptRegister(lower.url, code: FakeRegistrar.Code.invalidFontData)
+
+        _ = try await registry.remove(family: "Lobster", directories: [harness.store.directory])
+
+        #expect(registry.entry(for: lower.key) == nil)
+        #expect(await MainActor.run { lowerCounter.value } > before)
+    }
+
     @Test("removing an unregistered entry's family unregisters and registers nothing")
     func removeUnregisteredEntry() async throws {
         let harness = Harness()

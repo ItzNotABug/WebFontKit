@@ -103,7 +103,8 @@ struct ModifierTests {
 
         try await fonts.remove("Lobster")
         view.render()
-        try await view.choices.wait { $0.count > bodies }
+        #expect(view.choices.elements.count > bodies)
+        #expect(view.choices.elements.last == .fallback(.system(size: 19, weight: .regular)))
     }
 
     @Test("not registered: the fallback first, then the PostScript name once loaded, with .loading then .loaded")

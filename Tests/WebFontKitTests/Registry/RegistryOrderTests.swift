@@ -36,6 +36,24 @@ struct RegistryOrderTests {
         #expect(await MainActor.run { other.value } == 0)
     }
 
+    @Test("replacing a face stored under an old cache key redraws its views, even when the new file fails")
+    func replaceRedraws() async throws {
+        let harness = Harness()
+        let registry = harness.makeRegistry()
+        let old = try harness.storeFont(Fixtures.lobsterV20, family: "Lobster", cacheKey: "old")
+        _ = await registry.register(old, epochs: nil, store: harness.store)
+        let current = try harness.storeFont(Fixtures.lobster, family: "Lobster")
+        harness.registrar.scriptRegister(current.url, code: FakeRegistrar.Code.invalidFontData)
+        let lobster = await MainActor.run { registry.generations.counter(for: "Lobster") }
+        let before = await MainActor.run { lobster.value }
+
+        let epochs = registry.epochs(for: "Lobster")
+        _ = await registry.registerReplacingStale(current, epochs: epochs, store: harness.store)
+
+        #expect(registry.entry(for: old.key) == nil)
+        #expect(await MainActor.run { lobster.value } > before)
+    }
+
     @Test("a second (family, style) with a PostScript name the registry holds is not registered again")
     func sharedNameWithinRegistry() async throws {
         let harness = Harness()

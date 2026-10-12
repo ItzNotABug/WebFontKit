@@ -58,9 +58,7 @@ struct Epochs: Sendable, Hashable {
     var family: Int
 }
 
-/// A change counter per family, which `.font(web:)` reads so a finished face re-renders only
-/// the views showing that family. Separate from the locked table because an `@Observable`
-/// class can't be `Sendable`.
+/// Per-family change counters `.font(web:)` reads; kept apart from the table, which is read off-main.
 @MainActor
 final class RegistryGenerations {
     private var counters: [String: FamilyGeneration] = [:]
@@ -75,7 +73,7 @@ final class RegistryGenerations {
     }
 
     /// A family no view has read has no counter, and nothing to re-render.
-    func bump(_ families: [String]) {
+    func bump(_ families: Set<String>) {
         for family in families { counters[family]?.bump() }
     }
 }
@@ -220,7 +218,7 @@ final class Registry: Sendable {
         logSink.log(category, level, message, private: values)
     }
 
-    func bumpGenerations(of families: [String]) async {
+    func bumpGenerations(of families: Set<String>) async {
         await MainActor.run { generations.bump(families) }
     }
 
