@@ -9,18 +9,17 @@ import Foundation
 /// Families are found by a short hash of the name. Built by `scripts/catalog.sh`; the byte layout is
 /// in `scripts/catalog-format.md`.
 struct GoogleFontsCatalog: Sendable {
-    /// Mapped on first use. Nil once a year old: Google keeps serving old versions, so it would pin them.
+    /// Mapped on first use; nil once a year old, or it would pin old versions.
     static let bundled: GoogleFontsCatalog? = shipped().flatMap { $0.isCurrent(at: .now) ? $0 : nil }
 
-    /// The file in the package, whatever its age. Not kept: an expired one is unmapped at once.
+    /// The packaged file, whatever its age; not cached.
     static func shipped() -> GoogleFontsCatalog? {
         resourceBundle()?.url(forResource: "GoogleFonts", withExtension: "catalog")
             .flatMap { try? Data(contentsOf: $0, options: .alwaysMapped) }
             .flatMap(GoogleFontsCatalog.init(data:))
     }
 
-    /// Where SwiftPM and Xcode put the package's resources. Not `Bundle.module`: its accessor traps
-    /// when the bundle is missing, and a missing catalogue should only mean CSS2 lookups.
+    /// The package's resources. Not `Bundle.module`, which traps when the bundle is missing.
     private static func resourceBundle() -> Bundle? {
         let name = "WebFontKit_WebFontKit.bundle"
         let library = Bundle(for: BundleToken.self)
@@ -48,7 +47,7 @@ struct GoogleFontsCatalog: Sendable {
         date.timeIntervalSince(built) < Self.lifetime
     }
 
-    /// Each style's URL, or nil when any is missing: the caller then asks CSS2 for the whole call.
+    /// Each style's URL, or nil if any is missing.
     func urls(family: String, styles: [FontStyle]) -> [FontStyle: URL]? {
         let name = Array(family.utf8)
         return data.withUnsafeBytes { Decoder(bytes: $0, header: header).urls(name: name, styles: styles) }
@@ -57,7 +56,7 @@ struct GoogleFontsCatalog: Sendable {
 
 private final class BundleToken {}
 
-/// The header's fields, and where each code's table starts. Nothing else is read up front.
+/// The header, and where each code's table starts.
 private struct Header: Sendable {
     let hashBits, blockSize, rice, day, familyCount: Int
     let hashSeed: UInt32
@@ -91,7 +90,7 @@ private struct Header: Sendable {
     }
 }
 
-/// Reads the mapped bytes in place. Every read is bounds-checked, so damaged data never traps.
+/// Reads the mapped bytes in place; every read is bounds-checked.
 private struct Decoder {
     let bytes: UnsafeRawBufferPointer
     let header: Header
@@ -119,7 +118,7 @@ private struct Decoder {
         let families = min(header.blockSize, header.familyCount - low * header.blockSize)
         guard families > 0 else { return nil }
         var bits = Bits(bytes: bytes, at: 8 * header.records + u24(header.index + 6 * low + 3))
-        // Read every gap, finding the name's place; leaves the bits at the block's first record.
+        // Every gap is read, so the bits end at the block's first record.
         var current = u24(header.index + 6 * low)
         var position: Int? = current == nameHash ? 0 : nil
         for familyIndex in 1..<families {
@@ -165,7 +164,7 @@ private struct Decoder {
         return nil
     }
 
-    /// One family's record, adding each wanted style's URL. With no name it is only read past.
+    /// One family's record: adds the wanted styles' URLs, or with no name only skips it.
     private func family(_ bits: inout Bits, name: [UInt8]?, styles: [FontStyle],
                         into urls: inout [FontStyle: URL]) -> Bool {
         let seed = bits.read(8)
@@ -218,7 +217,7 @@ private struct Decoder {
         return true
     }
 
-    /// One file ID into `text`: rebuilt for a name, otherwise only read past. False for a bad record.
+    /// One file ID into `text` (skipped with no name); false for a bad record.
     private func id(_ bits: inout Bits, into text: inout [UInt8], weightOffset: inout Int?, seed: Int, name: [UInt8]?,
                     italic: Bool, computed: Bool, weight: Int, axes: Int) -> Bool {
         let build = name != nil
@@ -332,7 +331,7 @@ private struct Decoder {
     private static let files = Array((CSS2.files.absoluteString + "/").utf8)
     private static let base64url = Array("ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_".utf8)
 
-    /// The file's URL; nil for a name with anything but ASCII letters, digits and spaces (no Google name has).
+    /// The file's URL; nil unless the name is ASCII letters, digits and spaces.
     private static func url(name: [UInt8], version: Int, id: [UInt8]) -> URL? {
         var text: [UInt8] = []
         text.reserveCapacity(files.count + name.count + 8 + (id.count * 4 + 2) / 3 + 4)

@@ -33,7 +33,7 @@ def url_for(folder, version, identifier):
 
 
 def get(host, path, method="GET"):
-    """(status, body) over a kept-alive connection per thread; 429s, 5xx and drops retry with backoff."""
+    """(status, body), retrying 429s, 5xx and dropped connections with backoff."""
     status, body = 0, ""
     for attempt in range(5):
         if attempt:
@@ -66,7 +66,7 @@ def fetch_rows():
         return "family=" + urllib.parse.quote(name).replace("%20", "+") + ":ital,wght@" + axes
 
     def css(batch):
-        # Each block names its family, so batches are safe; one that doesn't parse leaves its family to CSS2.
+        # Each block names its family, so batching is safe; an unparsable one leaves it to CSS2.
         status, text = get("fonts.googleapis.com", "/css2?" + "&".join(query(name) for name in batch))
         found = []
         for block in text.split("@font-face")[1:] if status == 200 else []:
@@ -83,7 +83,7 @@ def fetch_rows():
     with concurrent.futures.ThreadPoolExecutor(8) as pool:
         batches = [names[start:start + 20] for start in range(0, len(names), 20)]
         rows = [row for found in pool.map(css, batches) for row in found]
-        # A family a batched answer left out (Google drops one it can't serve) is asked for alone.
+        # Google drops a family it can't serve from a batch: ask for it alone.
         missing = sorted(set(names) - {row[0] for row in rows})
         rows += [row for found in pool.map(css, [[name] for name in missing]) for row in found]
     return rows, sorted(set(names) - {row[0] for row in rows})
@@ -115,8 +115,7 @@ def parse(rows):
         entry = families.setdefault(name, [int(match.group(2)), {}])
         if entry[0] != int(match.group(2)):
             skipped.add(name)
-        # What format 2 can hold: an ID of at most 256 bytes, a name of at most 255, a version up to 255,
-        # and one seed (first ID byte) per family.
+        # Format 2's limits: IDs up to 256 bytes, names up to 255, versions up to 255, one seed per family.
         seeds = {first[0] for first in entry[1].values()} | {identifier[0]}
         if len(identifier) > 256 or len(name.encode()) > 255 or entry[0] > 255 or len(seeds) > 1:
             skipped.add(name)
@@ -212,7 +211,7 @@ def describe(style, axes):
 
 
 def axis_starts(style, identifier):
-    """Where each axis block starts in the ID (the seed is byte 0), or None when its length doesn't fit."""
+    """Where each axis block starts in the ID, or None when the length doesn't fit."""
     first = 1 + len(head(style))
     rest = len(identifier) - first - 2
     if rest < 0 or rest % 13:
@@ -234,7 +233,7 @@ def unmasked(file, mask, start, length):
 
 
 def learn_masks(ids):
-    """(seed, position) -> mask byte: from every byte whose plain value is known, then axis tags, then the rest."""
+    """(seed, position) -> mask byte: from known bytes, then axis tags and values, then zeros."""
     votes = collections.defaultdict(collections.Counter)
     for file in ids:
         if file.starts is None:
@@ -246,7 +245,7 @@ def learn_masks(ids):
                 votes[(file.id[0], position)][file.id[position] ^ text[position - 1]] += 1
     mask = {key: most(counter) for key, counter in votes.items()}
 
-    # Axis tags read in full teach the rest: a partly known tag that fits only one of them, else the most common.
+    # A partly known tag that fits only one fully read tag is that tag; otherwise the most common.
     read_tags = (unmasked(file, mask, start + 3, 5) for file in ids for start in file.starts or [])
     tag_counts = collections.Counter(tag for tag in read_tags if tag)
     tags, common_tag = sorted(tag_counts), most(tag_counts) if tag_counts else WGHT
@@ -307,7 +306,7 @@ def huffman(counts, limit=8):
 
 
 def canonical(lengths):
-    """symbol -> (code, length), and the table the file stores: counts per length 1-8, then symbols in code order."""
+    """symbol -> (code, length), and the stored table: counts per length 1-8, then symbols."""
     order = sorted((length, symbol) for symbol, length in lengths.items())
     codes, code, previous = {}, 0, order[0][0]
     for length, symbol in order:
@@ -361,7 +360,7 @@ def zero_runs(data):
 
 
 def group_styles(families):
-    """name -> (version, [Group]): each italic group of a family, computed when one ID gives every weight."""
+    """name -> (version, [Group]): upright and italic groups, computed when one ID gives every weight."""
     entries = {}
     for name, (version, styles) in families.items():
         groups = []
@@ -393,7 +392,7 @@ def split_fields(ids, mask):
 
 
 def expected_value(tag, style, usual):
-    """The value an axis gets unless it says otherwise: the weight for a listed wght, else the usual value or zeros."""
+    """An axis's default value: the weight for a listed wght, else the usual value or zeros."""
     return struct.pack("<f", float(style.weight)) if tag == WGHT and tag in usual else usual.get(tag, bytes(4))
 
 
@@ -434,7 +433,7 @@ def tables_for(entries, ids):
 
 
 def hash_order(names, avoid):
-    """(hash seed, names in hash order, name -> hash): no two names, and no name in avoid, share a hash."""
+    """(hash seed, names in hash order, name -> hash), with no hash shared or met by a name in avoid."""
     for seed in range(1 << 16):
         hashes = {name: fnv(name.encode(), seed, HASH_BITS) for name in names}
         stored = set(hashes.values())
@@ -494,7 +493,7 @@ def record(version, groups, tables):
 
 
 def build(families, avoid):
-    """The format-2 file. Names in avoid (families left to CSS2) never share a stored family's hash."""
+    """The format-2 file; names in avoid (left to CSS2) never share a stored hash."""
     names = sorted(families, key=lambda family: family.encode())
     if not names:
         sys.exit("No families to build.")
@@ -517,7 +516,7 @@ def build(families, avoid):
         code_tables.append(table)
 
     hash_list = [hashes[name] for name in order]
-    # Per block: Rice-coded gaps between sorted name hashes (its first hash is in the index), then its records.
+    # Per block: Rice-coded hash gaps (the first hash is in the index), then the records.
     gaps = [hash_list[position] - hash_list[position - 1] for position in range(1, len(hash_list)) if position % BLOCK]
     rice = min(range(1, 20), key=lambda width: sum((gap >> width) + 1 + width for gap in gaps))
     stream, index = BitWriter(), bytearray()
@@ -591,7 +590,7 @@ class BitReader:
 
 
 class Catalogue:
-    """A format-2 file, read as GoogleFontsCatalog.swift reads it and as strictly: anything else is ValueError."""
+    """A format-2 file, read as strictly as the Swift reader; anything else is ValueError."""
 
     def __init__(self, data):
         if len(data) < HEADER_SIZE or data[:5] != b"WFKC" + bytes([FORMAT]):
@@ -631,7 +630,7 @@ class Catalogue:
         raise ValueError("A bad code in the catalogue.")
 
     def read(self, names):
-        """name -> (version, {(italic, weight): file ID}) for the names it holds, in one pass over the records."""
+        """name -> (version, {(italic, weight): file ID}) for the names it holds."""
         by_hash = {fnv(name.encode(), self.hash_seed, self.hash_bits): name for name in names}
         found = {}
         for block, (first_hash, bit) in enumerate(self.block_starts):
@@ -689,7 +688,7 @@ class Catalogue:
                     continue
                 if offset is None or offset + 4 > len(identifier):
                     raise ValueError("A computed group with no weight offset.")
-                # Any other weight differs only in the little-endian Float32 of the weight.
+                # Other weights differ only in the weight float.
                 for other in present:
                     diff = xor(struct.pack("<f", float(base)), struct.pack("<f", float(other)))
                     other_id = bytearray(identifier)
@@ -744,8 +743,8 @@ def read(data, names):
 
 
 def shares_hash(data, name):
-    """Whether name's hash meets a stored family's. Reading raises only past a match, when some style of the
-    record can't be rebuilt for name; Swift may still answer the others."""
+    """Whether name's hash meets a stored family's. A ValueError comes only past a match (some style can't be
+    rebuilt for name), and Swift may still answer the others."""
     try:
         return bool(read(data, [name]))
     except ValueError:
@@ -798,9 +797,7 @@ def write_bundled(data, contents):
 
 
 def committed():
-    """(bytes, contents) of the bundled catalogue; empty when it is missing or unreadable.
-
-    The file holds no names, so the listing beside the tests names its families, and must match it."""
+    """(bytes, contents) of the bundled catalogue, named by its listing; empty when missing or unreadable."""
     try:
         with open(BUNDLED, "rb") as file:
             data = file.read()
@@ -818,7 +815,7 @@ def committed():
 
 
 def keep_unanswered(rows, unanswered, old):
-    """Families listed but unanswered keep their committed entries. Returns (kept, still unanswered)."""
+    """Unanswered families keep their committed entries. Returns (kept, still unanswered)."""
     kept = [name for name in unanswered if name in old]
     rows += [(name, f"{weight}{'i' if italic else ''}", url)
              for name in kept for (italic, weight), url in old[name][1].items()]
@@ -866,7 +863,7 @@ def command_reckon(arguments):
     old_data, old = committed()
     pairs = [(name, url) for name, (_, styles) in old.items() for url in styles.values()]
     sample = random.sample(pairs, min(50, len(pairs)))
-    # The catalogue relies on Google serving old versions; sampled while the fresh build is fetched.
+    # The catalogue relies on Google serving old versions: sample them while fetching.
     with concurrent.futures.ThreadPoolExecutor(8) as pool:
         statuses = pool.map(lambda pair: get("fonts.gstatic.com", urllib.parse.urlsplit(pair[1]).path, "HEAD")[0],
                             sample)
@@ -893,7 +890,7 @@ def command_reckon(arguments):
     common = sorted(old.keys() & new.keys())
     bumped = [name for name in common if old[name][0] != new[name][0]]
     restyled = [name for name in common if old[name][1].keys() != new[name][1].keys()]
-    # File IDs have been stable across versions; one changing within a version breaks that assumption.
+    # An ID changing within one version breaks the catalogue's assumption.
     unstable = [name for name in common if old[name][0] == new[name][0]
                 and any(old[name][1][style] != new[name][1][style]
                         for style in old[name][1].keys() & new[name][1].keys())]
@@ -909,9 +906,9 @@ def command_reckon(arguments):
             lines.append(f"- **{label} ({len(names)}):** {', '.join(names[:30])}{' …' if len(names) > 30 else ''}")
     lines += [f"- **Problem:** {problem}" for problem in problems]
 
-    # The library trusts a catalogue for a year from its build day, so rebuild an unchanged one early.
+    # The library trusts a catalogue for a year, so rebuild an unchanged one early.
     age = today() - struct.unpack_from("<I", old_data, 8)[0] if old_data else 0
-    # A family newly left to CSS2 can share a committed family's hash; the fresh build's seed avoids it.
+    # A family newly left to CSS2 may share a committed hash; the fresh build's seed avoids it.
     left_to_css2 = sorted((skipped | set(unanswered)) - old.keys())
     strays = [name for name in left_to_css2 if old_data and shares_hash(old_data, name)]
     changed = old != new or strays or age > REFRESH_AFTER_DAYS

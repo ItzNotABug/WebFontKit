@@ -6,7 +6,7 @@ import WebFontKitTestSupport
 
 @Suite(.timeLimit(.minutes(1)))
 struct GoogleFontsCatalogTests {
-    /// Real Google rows for 25 families, plus one left to CSS2 (no URL), and the catalogue built from them.
+    /// Google's rows for 25 families plus one left to CSS2, and the catalogue built from them.
     static let rows: [(family: String, style: String, url: String)] = {
         let raw = try! JSONSerialization.jsonObject(with: Fixtures.data("catalog/rows.json")) as! [[String]]
         return raw.map { ($0[0], $0[1], $0[2]) }
@@ -17,7 +17,7 @@ struct GoogleFontsCatalogTests {
         FontStyle(weight: Int(code.filter(\.isNumber))!, italic: code.hasSuffix("i"))
     }
 
-    /// `shipped.tsv`: each shipped family's version, styles and a digest of its URLs (see SOURCES.md).
+    /// `shipped.tsv`: each shipped family's version, styles and URL digest.
     static let listing: [(family: String, version: String, styles: [FontStyle], digest: String)] = {
         String(decoding: Fixtures.data("catalog/shipped.tsv"), as: UTF8.self).split(separator: "\n").map { line in
             let fields = line.split(separator: "\t", omittingEmptySubsequences: false).map(String.init)
@@ -48,7 +48,7 @@ struct GoogleFontsCatalogTests {
         #expect(Self.catalog.urls(family: "Lobster", styles: [.regular, .bold]) == nil)
     }
 
-    /// "Zz Cbsq" is left to CSS2, and its hash meets ABeeZee's at seed 0: the sample's seed must keep them apart.
+    /// "Zz Cbsq" (left to CSS2) shares ABeeZee's hash at seed 0, so the sample uses another seed.
     @Test("names the sample doesn't hold miss", arguments: ["Lobstr", "lobster", "", "Zzzz Unknown", "Zz Cbsq"])
     func misses(family: String) {
         #expect(Self.catalog.urls(family: family, styles: [.regular]) == nil)
@@ -79,7 +79,7 @@ struct GoogleFontsCatalogTests {
         }
     }
 
-    /// Random damage rarely leaves a header that still validates, so each field byte is set to extremes in turn.
+    /// Random damage rarely leaves a valid header, so each header byte gets extremes in turn.
     @Test("any one header byte at an extreme never crashes or hangs", arguments: 5..<56)
     func damagedHeader(at offset: Int) {
         for value: UInt8 in [0, 1, 0x7F, 0x80, 0xFF] {
@@ -99,7 +99,7 @@ struct GoogleFontsCatalogTests {
         #expect(!Self.catalog.isCurrent(at: built.addingTimeInterval(365 * 86_400)))
     }
 
-    /// A misread build day would date the file decades back (never used) or ahead (never expiring).
+    /// A misread build day would date the file decades off: never used, or never expiring.
     @Test("the build day reads as a date between format 2's release and now")
     func buildDay() throws {
         let shipped = try #require(GoogleFontsCatalog.shipped())
@@ -117,7 +117,7 @@ struct GoogleFontsCatalogTests {
                                    "\(row.family) \(row.style)")
             let google = try #require(URL(string: row.url))
             #expect(url.pathComponents[2] == google.pathComponents[2], "\(row.family) \(row.style) folder")
-            // A refreshed catalogue may hold a newer version, whose IDs can differ; within one, they can't.
+            // IDs can change with a version, never within one.
             if url.pathComponents[3] == google.pathComponents[3] {
                 #expect(url.lastPathComponent == google.lastPathComponent, "\(row.family) \(row.style)")
             }
@@ -139,8 +139,7 @@ struct GoogleFontsCatalogTests {
         }
     }
 
-    /// Asked one at a time, a listed style gets the URL it gets among all of them; any other style misses,
-    /// alone or beside styles the family has.
+    /// A listed style alone gets the URL it gets among all; any other misses, alone or with listed ones.
     @Test("every shipped family answers each style alone", arguments: 0..<4)
     func shippedStyleByStyle(quarter: Int) throws {
         let shipped = try #require(GoogleFontsCatalog.shipped())
@@ -164,7 +163,7 @@ struct GoogleFontsCatalogTests {
     @Test("unknown names rarely match a shipped family")
     func shippedUnknownNames() throws {
         let shipped = try #require(GoogleFontsCatalog.shipped())
-        // A 20-bit name hash: an unknown name matches some family about 0.2% of the time (one 404, then CSS2).
+        // A 20-bit hash: an unknown name matches some family ~0.2% of the time.
         var random = SplitMix64(seed: 0xCA7A)
         let letters = "abcdefghijklmnopqrstuvwxyz "
         let unknown = (0..<2_000).map { _ in String((0..<12).map { _ in letters.randomElement(using: &random)! }) }

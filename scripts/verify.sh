@@ -39,7 +39,7 @@ for name, kept in (("sample", rows), ("without-lobster", [row for row in rows if
         sys.exit(f"{name}.catalog no longer matches rows.json: rebuild it (Tests/Fixtures/SOURCES.md)")
 if not catalog.committed()[1]:
     sys.exit("shipped.tsv doesn't match the bundled catalogue")
-# Reckon refreshes it after 90 days; a release must not ship one near its year's expiry.
+# Reckon refreshes it at 90 days; don't release one nearing its year.
 age = catalog.today() - int.from_bytes(open(catalog.BUNDLED, "rb").read()[8:12], "little")
 if age > 120:
     sys.exit(f"The bundled catalogue is {age} days old: merge Reckon's refresh or run scripts/catalog.sh")
