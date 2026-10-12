@@ -1,8 +1,9 @@
 #!/usr/bin/env bash
 # Everything to pass before a release, stopping at the first failure: build.sh,
-# the macOS suite many times over to catch flaky tests, the strict-concurrency
-# build, the iOS suites on the newest and oldest runtimes, the Example UI tests,
-# 90% line coverage and DocC. Test steps reuse build.sh's builds where the flags match.
+# catalogue fixtures that match the builder, the macOS suite many times over to
+# catch flaky tests, the strict-concurrency build, the iOS suites on the newest and
+# oldest runtimes, the Example UI tests, 90% line coverage and DocC. Test steps
+# reuse build.sh's builds where the flags match.
 #
 # Environment:
 #   WEBFONTKIT_RUNS       parallel macOS suite runs (default 10; 100 before a release flushes rare flakes)
@@ -23,6 +24,26 @@ SKIP_PERF=(--skip WebFontKitPerformanceTests)
 "$ROOT/scripts/build.sh"
 require_ios_simulator
 require_oldest_simulator
+
+log "Catalogue fixtures match the builder"
+python3 -B - <<'EOF' || fail "the catalogue check failed (see above)"
+import json, sys
+sys.path.insert(0, "scripts")
+import catalog
+rows = json.load(open("Tests/Fixtures/catalog/rows.json"))
+for name, kept in (("sample", rows), ("without-lobster", [row for row in rows if row[0] != "Lobster"])):
+    built = catalog.build_verified(kept, [])[0]
+    committed = open(f"Tests/Fixtures/catalog/{name}.catalog", "rb").read()
+    # Bytes 8-11 are the build day.
+    if built[:8] + built[12:] != committed[:8] + committed[12:]:
+        sys.exit(f"{name}.catalog no longer matches rows.json: rebuild it (Tests/Fixtures/SOURCES.md)")
+if not catalog.committed()[1]:
+    sys.exit("shipped.tsv doesn't match the bundled catalogue")
+# Reckon refreshes it after 90 days; one over 120 means a refresh went unmerged.
+age = catalog.today() - int.from_bytes(open(catalog.BUNDLED, "rb").read()[8:12], "little")
+if age > 120:
+    sys.exit(f"The bundled catalogue is {age} days old: merge Reckon's refresh or run scripts/catalog.sh")
+EOF
 
 log "macOS suite, $RUNS parallel runs"
 for i in $(seq 1 "$RUNS"); do
