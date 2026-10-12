@@ -40,6 +40,7 @@ The view draws its fallback until Lobster is ready, then swaps. Behind it, ``Web
 - ``WebFontPhase``
 - ``WebFontEvent``
 - ``FontLoadResults``
+- ``FontStyleResults``
 
 ### Apps, widgets and privacy
 

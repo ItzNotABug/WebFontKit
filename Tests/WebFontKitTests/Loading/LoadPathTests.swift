@@ -18,7 +18,7 @@ struct LoadPathTests {
         let fonts = harness.makeFonts()
         let events = try await harness.warmUp(fonts)
 
-        try await fonts.load("Lobster")
+        try await fonts.loadOrThrow("Lobster")
 
         #expect(!FileManager.default.fileExists(atPath: marker.path))
         #expect(harness.logSink.entries.contains { $0.message.contains(marker.lastPathComponent) })
@@ -34,7 +34,7 @@ struct LoadPathTests {
         try harness.store.writeMarker(family: "Lobster", style: .regular, postScriptName: "Helvetica")
         let fonts = harness.makeFonts()
         let events = try await harness.warmUp(fonts)
-        try await fonts.load("Lobster")
+        try await fonts.loadOrThrow("Lobster")
         #expect(harness.server.requests.isEmpty)
         #expect(fonts.postScriptName(family: "Lobster", style: .regular) == "Helvetica")
         #expect(fonts.downloaded.isEmpty)
@@ -49,7 +49,7 @@ struct LoadPathTests {
         let fonts = harness.makeFonts()
         let events = try await harness.warmUp(fonts)
         try harness.storeFont(Fixtures.lobster, family: "Lobster", version: "v1")
-        try await fonts.load("Lobster")
+        try await fonts.loadOrThrow("Lobster")
         #expect(harness.server.requests.isEmpty)
         #expect(fonts.postScriptName(family: "Lobster", style: .regular) == "Lobster-Regular")
         try await harness.sentinel(fonts, events, after: "Lobster")
@@ -64,7 +64,7 @@ struct LoadPathTests {
         let events = try await harness.warmUp(fonts)
         harness.registrar.holdRegister()
 
-        let load = Task { try await fonts.load("Lobster") }
+        let load = Task { try await fonts.loadOrThrow("Lobster") }
         let held = try await harness.registrar.heldRegisterArrivals.wait { $0.count == 1 }
         let file = try #require(held.first?.first)
         harness.registrar.scriptRegister(file, code: 0)
@@ -88,7 +88,7 @@ struct LoadPathTests {
         let fonts = harness.makeFonts()
         try await harness.warmUp(fonts)
         harness.registrar.holdRegister()
-        let load = Task { try await fonts.load("Lobster") }
+        let load = Task { try await fonts.loadOrThrow("Lobster") }
         try await harness.registrar.heldRegisterArrivals.wait { $0.count == 1 }
         try await fonts.remove("Lobster")
         harness.registrar.releaseRegister()
@@ -104,10 +104,10 @@ struct LoadPathTests {
         let fonts = harness.makeFonts()
         try await harness.warmUp(fonts)
         harness.registrar.holdRegister()
-        let first = Task { try await fonts.load("Lobster") }
+        let first = Task { try await fonts.loadOrThrow("Lobster") }
         try await harness.registrar.heldRegisterArrivals.wait { $0.count == 1 }
         try await fonts.remove("Lobster")
-        let second = Task { try await fonts.load("Lobster") }
+        let second = Task { try await fonts.loadOrThrow("Lobster") }
         try await harness.server.waitForRequests(count: 2) { harness.isFontFile($0) }
         harness.registrar.releaseRegister()
         await #expect(throws: CancellationError.self) { try await first.value }
@@ -125,8 +125,8 @@ struct LoadPathTests {
         let fonts = harness.makeFonts(source: TestRemoteSource(key: "Lobster-v32"))
         try await harness.warmUp(fonts)
 
-        try await fonts.load("Lobster")
-        try await fonts.load("lobster")
+        try await fonts.loadOrThrow("Lobster")
+        try await fonts.loadOrThrow("lobster")
 
         #expect(harness.registrar.calls(.register).count == 1)
         #expect(fonts.registry.entry(for: FaceKey(family: "lobster", style: .regular))?.registeredHere == false)
@@ -145,10 +145,10 @@ struct LoadPathTests {
         try await harness.warmUp(fonts)
 
         if styles {
-            try await fonts.load("Lobster", styles: [.regular, .bold])
+            try await fonts.loadOrThrow("Lobster", styles: [.regular, .bold])
         } else {
-            async let upper: Void = fonts.load("Lobster")
-            async let lower: Void = fonts.load("lobster")
+            async let upper: Void = fonts.loadOrThrow("Lobster")
+            async let lower: Void = fonts.loadOrThrow("lobster")
             _ = try await (upper, lower)
         }
 
@@ -167,11 +167,11 @@ struct LoadPathTests {
         }
         let fonts = harness.makeFonts(source: source)
         try await harness.warmUp(fonts)
-        try await fonts.load("Lobster")
+        try await fonts.loadOrThrow("Lobster")
         let old = try #require(fonts.registry.entry(for: FaceKey(family: "Lobster", style: .regular))?.fileURL)
 
         source.version.withLock { $0 = "v20" }
-        try await fonts.load("Lobster")
+        try await fonts.loadOrThrow("Lobster")
 
         let new = try #require(fonts.registry.entry(for: FaceKey(family: "Lobster", style: .regular))?.fileURL)
         #expect(new != old)

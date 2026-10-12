@@ -39,7 +39,7 @@ extension Harness {
     /// the family's work settles, then a sentinel load's `.loading` arrives behind it.
     func sentinel(_ fonts: WebFonts, _ events: AsyncRecorder<WebFontEvent>, after family: String) async throws {
         await fonts.quiesce(family: family)
-        let sentinel = Task { try await fonts.load(WebFontEvent.sentinelFamily) }
+        let sentinel = Task { try await fonts.loadOrThrow(WebFontEvent.sentinelFamily) }
         try await events.wait { $0.contains(.loading(family: WebFontEvent.sentinelFamily, styles: [.regular])) }
         sentinel.cancel()
         _ = try? await sentinel.value

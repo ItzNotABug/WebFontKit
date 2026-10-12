@@ -76,7 +76,7 @@ struct ModifierTests {
         harness.server.serveGoogle()
         let fonts = harness.makeFonts()
         try await harness.warmUp(fonts)
-        try await fonts.load("Lobster")
+        try await fonts.loadOrThrow("Lobster")
 
         let view = ModifierHarness(fonts: fonts)
         #expect(try await view.settledPhases() == [.loaded])
@@ -91,13 +91,13 @@ struct ModifierTests {
         harness.server.serveGoogle()
         let fonts = harness.makeFonts()
         try await harness.warmUp(fonts)
-        try await fonts.load("Lobster")
+        try await fonts.loadOrThrow("Lobster")
         let view = ModifierHarness(fonts: fonts)
         #expect(try await view.settledPhases() == [.loaded])
         view.render()
         let bodies = view.choices.elements.count
 
-        try await fonts.load("Inter", styles: [.regular, .bold])
+        try await fonts.loadOrThrow("Inter", styles: [.regular, .bold])
         view.render()
         #expect(view.choices.elements.count == bodies)
 

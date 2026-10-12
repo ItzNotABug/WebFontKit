@@ -5,7 +5,7 @@ Ask for the styles you draw, and reach any face exactly by its PostScript name.
 ## Ask for styles the family has
 
 - WebFontKit never discovers a family's styles. A family without a regular face (Molle, Buda, UnifrakturCook, Sunflower) answers ``WebFontError/notFound`` to a bare `load`; ask for a style it has.
-- ``WebFonts/load(_:styles:)`` is all or nothing: if any requested style is missing, nothing from the call is stored and it throws `.notFound`.
+- ``WebFonts/load(_:styles:)`` loads each style on its own: a missing style is `.notFound` in its ``FontStyleResults``, and the styles the family has still load.
 - iOS does not synthesise bold or italic for a downloaded font. When the modifier asks for a style the family lacks, it draws the regular face plain and reports `.loaded`.
 
 ## Reaching a face through Apple's APIs

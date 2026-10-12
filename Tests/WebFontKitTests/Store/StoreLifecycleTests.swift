@@ -12,7 +12,7 @@ struct StoreLifecycleTests {
         harness.server.serveGoogle()
         let fonts = harness.makeFonts(storage: .session)
         try await harness.warmUp(fonts)
-        try await fonts.load("Lobster")
+        try await fonts.loadOrThrow("Lobster")
         let file = try #require(fonts.registry.entry(for: FaceKey(family: "Lobster", style: .regular))?.fileURL)
 
         fonts.configure(WebFonts.Configuration(storage: .persistent, session: harness.session))
@@ -28,7 +28,7 @@ struct StoreLifecycleTests {
         harness.server.serveGoogle()
         let fonts = harness.makeFonts()
         let events = try await harness.warmUp(fonts)
-        try await fonts.load("Lobster")
+        try await fonts.loadOrThrow("Lobster")
         harness.files.fail(.delete)
 
         await #expect(throws: WebFontError.storage) { try await fonts.removeAll() }
@@ -43,7 +43,7 @@ struct StoreLifecycleTests {
         let source = VersionedSource(version: "v1")
         let fonts = harness.makeFonts(source: source)
         try await harness.warmUp(fonts)
-        try await fonts.load("Lobster")
+        try await fonts.loadOrThrow("Lobster")
         let key = FaceKey(family: "Lobster", style: .regular)
         let old = try #require(fonts.registry.entry(for: key)?.fileURL)
 
@@ -54,7 +54,7 @@ struct StoreLifecycleTests {
         try FileManager.default.copyItem(at: old, to: newer)
         try FileManager.default.removeItem(at: old)
 
-        try await fonts.load("Lobster")
+        try await fonts.loadOrThrow("Lobster")
 
         #expect(harness.server.requests.count == 1)
         #expect(fonts.registry.entry(for: key)?.fileURL?.lastPathComponent == newer.lastPathComponent)

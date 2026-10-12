@@ -1,7 +1,7 @@
 /// A weight and whether it is italic. iOS never synthesises bold or italic, so load what you draw.
 ///
 /// ```swift
-/// try await WebFonts.shared.load("Inter", styles: [.regular, .bold, FontStyle(weight: 300)])
+/// await WebFonts.shared.load("Inter", styles: [.regular, .bold, FontStyle(weight: 300)])
 /// ```
 public struct FontStyle: Hashable, Sendable {
     /// The weight, from 100 to 900 in steps of 100 (400 is regular, 700 is bold).
@@ -36,28 +36,28 @@ public struct FontStyle: Hashable, Sendable {
     /// Weight 400, upright.
     ///
     /// ```swift
-    /// try await WebFonts.shared.load("Lobster", styles: [.regular])
+    /// await WebFonts.shared.load("Lobster", styles: [.regular])
     /// ```
     public static let regular = FontStyle(weight: 400)
 
     /// Weight 700, upright.
     ///
     /// ```swift
-    /// try await WebFonts.shared.load("Inter", styles: [.bold])
+    /// await WebFonts.shared.load("Inter", styles: [.bold])
     /// ```
     public static let bold = FontStyle(weight: 700)
 
     /// Weight 400, italic.
     ///
     /// ```swift
-    /// try await WebFonts.shared.load("Inter", styles: [.italic])
+    /// await WebFonts.shared.load("Inter", styles: [.italic])
     /// ```
     public static let italic = FontStyle(weight: 400, italic: true)
 
     /// Weight 700, italic.
     ///
     /// ```swift
-    /// try await WebFonts.shared.load("Inter", styles: [.boldItalic])
+    /// await WebFonts.shared.load("Inter", styles: [.boldItalic])
     /// ```
     public static let boldItalic = FontStyle(weight: 700, italic: true)
 

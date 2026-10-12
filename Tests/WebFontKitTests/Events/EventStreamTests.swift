@@ -13,9 +13,9 @@ struct EventStreamTests {
         let events = try await harness.warmUp(fonts)
 
         let joins = harness.joins(on: fonts)
-        let a = Task { try await fonts.load("Lobster") }
+        let a = Task { try await fonts.loadOrThrow("Lobster") }
         try await events.wait { $0.contains(.loading(family: "Lobster", styles: [.regular])) }
-        let b = Task { try await fonts.load("Lobster") }
+        let b = Task { try await fonts.loadOrThrow("Lobster") }
         try await joins.wait { $0.count == 1 }
         try await harness.server.waitForRequests { harness.isCSS2($0) }
         a.cancel()
@@ -35,9 +35,9 @@ struct EventStreamTests {
         let events = try await harness.warmUp(fonts)
 
         let joins = harness.joins(on: fonts)
-        let a = Task { try await fonts.load("Lobster") }
+        let a = Task { try await fonts.loadOrThrow("Lobster") }
         try await harness.server.waitForRequests()
-        let b = Task { try await fonts.load("Lobster") }
+        let b = Task { try await fonts.loadOrThrow("Lobster") }
         try await joins.wait { $0.count == 1 }
         a.cancel()
         _ = try? await a.value
@@ -55,7 +55,7 @@ struct EventStreamTests {
         let fonts = harness.makeFonts()
         let events = try await harness.warmUp(fonts)
 
-        let a = Task { try await fonts.load("Lobster") }
+        let a = Task { try await fonts.loadOrThrow("Lobster") }
         try await harness.server.waitForRequests { holdCSS ? harness.isCSS2($0) : harness.isFontFile($0) }
         a.cancel()
         await #expect(throws: CancellationError.self) { try await a.value }
@@ -74,10 +74,10 @@ struct EventStreamTests {
         let events = try await harness.warmUp(fonts)
 
         let joins = harness.joins(on: fonts)
-        let a = Task { try await fonts.load("Inter", styles: [.regular, .bold]) }
+        let a = Task { try await fonts.loadOrThrow("Inter", styles: [.regular, .bold]) }
         try await harness.server.waitForRequests { harness.isCSS2($0) }
-        let b = Task { try await fonts.load("Inter", styles: [.regular]) }
-        let c = Task { try await fonts.load("Inter", styles: [.bold]) }
+        let b = Task { try await fonts.loadOrThrow("Inter", styles: [.regular]) }
+        let c = Task { try await fonts.loadOrThrow("Inter", styles: [.bold]) }
         try await joins.wait { $0.count == 2 }
         a.cancel()
         _ = try? await a.value
@@ -96,7 +96,7 @@ struct EventStreamTests {
         let fonts = harness.makeFonts()
         let events = try await harness.warmUp(fonts)
 
-        let load = Task { try await fonts.load("Lobster") }
+        let load = Task { try await fonts.loadOrThrow("Lobster") }
         try await harness.server.waitForRequests { harness.isFontFile($0) }
         if all { try await fonts.removeAll() } else { try await fonts.remove("Lobster") }
         harness.server.releaseAll()
@@ -111,7 +111,7 @@ struct EventStreamTests {
         #expect(harness.registrar.registeredURLs.isEmpty)
 
         harness.server.serveGoogle()
-        try await fonts.load("Lobster")
+        try await fonts.loadOrThrow("Lobster")
         #expect(fonts.postScriptName(family: "Lobster", style: .regular) == "Lobster-Regular")
     }
 
@@ -121,7 +121,7 @@ struct EventStreamTests {
         harness.server.serveGoogle(holdFiles: true)
         let fonts = harness.makeFonts()
         try await harness.warmUp(fonts)
-        let load = Task { try await fonts.load("Inter") }
+        let load = Task { try await fonts.loadOrThrow("Inter") }
         try await harness.server.waitForRequests { harness.isFontFile($0) }
         try await fonts.remove("Lobster")
         harness.server.releaseAll()
@@ -148,8 +148,8 @@ struct EventStreamTests {
         let fonts = harness.makeFonts()
         let events = try await harness.warmUp(fonts)
         try await fonts.removeAll()
-        try await fonts.load("Lobster")
-        try await fonts.load("Inter")
+        try await fonts.loadOrThrow("Lobster")
+        try await fonts.loadOrThrow("Inter")
         try await fonts.removeAll()
         try await events.wait { $0.contains(.removed(family: "Lobster")) }
         #expect(events.loadEvents.filter { if case .removed = $0 { true } else { false } }
@@ -187,7 +187,7 @@ struct EventStreamTests {
         let second = harness.listen(to: fonts)
         try await first.wait { !$0.isEmpty }
         #expect(first.elements.first == .warmedUp(count: 1))
-        try await fonts.load("Inter")
+        try await fonts.loadOrThrow("Inter")
         try await first.wait { $0.count == 3 }
         try await second.wait { $0.count == 3 }
         #expect(first.elements == second.elements)

@@ -1,14 +1,12 @@
 import Foundation
 
-/// Why a font could not be loaded. A cancelled `load` throws `CancellationError` instead.
+/// Why a font could not be loaded. A cancelled `load` has no entry for the styles it did not finish.
 ///
 /// ```swift
-/// do {
-///     try await WebFonts.shared.load("Lobstr")
-/// } catch WebFontError.notFound {
-///     print("No such family or style")
-/// } catch WebFontError.offline {
-///     print("No network, and nothing on disk")
+/// switch await WebFonts.shared.load("Lobstr")[.regular] {
+/// case .failure(.notFound)?: print("No such family or style")
+/// case .failure(.offline)?: print("No network, and nothing on disk")
+/// default: break
 /// }
 /// ```
 public enum WebFontError: Error, Sendable, Equatable {

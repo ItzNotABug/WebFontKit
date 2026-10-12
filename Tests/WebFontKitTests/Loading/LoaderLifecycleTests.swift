@@ -18,7 +18,7 @@ struct LoaderLifecycleTests {
         let fonts = harness.makeFonts(source: TestDataSource { _ in throw CancellationError() })
         try await harness.warmUp(fonts)
 
-        await #expect(throws: WebFontError.network(.cancelled)) { try await fonts.load("Lobster") }
+        await #expect(throws: WebFontError.network(.cancelled)) { try await fonts.loadOrThrow("Lobster") }
         #expect(Self.settled(fonts))
     }
 
@@ -30,7 +30,7 @@ struct LoaderLifecycleTests {
         let fonts = harness.makeFonts(source: .hosted(at: base))
         try await harness.warmUp(fonts)
 
-        await #expect(throws: WebFontError.network(.cancelled)) { try await fonts.load("Lobster") }
+        await #expect(throws: WebFontError.network(.cancelled)) { try await fonts.loadOrThrow("Lobster") }
         #expect(Self.settled(fonts))
     }
 
@@ -42,12 +42,12 @@ struct LoaderLifecycleTests {
         // The fetch task is attached before the call parks, so this waits for it to fail.
         fonts.hooks.beforePark = { await fonts.quiesce(family: "Lobster") }
 
-        await #expect(throws: WebFontError.offline) { try await fonts.load("Lobster") }
+        await #expect(throws: WebFontError.offline) { try await fonts.loadOrThrow("Lobster") }
         #expect(Self.settled(fonts))
     }
 
-    @Test("a call that will fail on a missing style starts no download, even when CSS2 answers before it parks")
-    func noDownloadBeforeDecided() async throws {
+    @Test("a call missing a style downloads only the styles that exist, even when CSS2 answers before it parks")
+    func downloadsOnlyExistingStyles() async throws {
         let harness = Harness()
         harness.server.serveGoogle()
         let fonts = harness.makeFonts()
@@ -57,10 +57,10 @@ struct LoaderLifecycleTests {
         // CSS2 has answered by the time the call parks.
         fonts.hooks.beforePark = { await fonts.quiesce(family: "Lobster") }
 
-        await #expect(throws: WebFontError.notFound) { try await fonts.load("Lobster", styles: [.regular, .bold]) }
-        #expect(fetches.withLock { $0 } == 0)
-        #expect(harness.fileRequests == 0)
-        #expect(harness.leftovers.isEmpty)
+        let results = await fonts.load("Lobster", styles: [.regular, .bold])
+        #expect(results.succeeded == [.regular] && results.failed.map(\.error) == [.notFound])
+        #expect(fetches.withLock { $0 } == 1)
+        #expect(harness.fileRequests == 1)
         #expect(Self.settled(fonts))
     }
 
@@ -75,7 +75,7 @@ struct LoaderLifecycleTests {
             withUnsafeCurrentTask { $0?.cancel() }
         }
 
-        let load = Task { try await fonts.load("Lobster") }
+        let load = Task { try await fonts.loadOrThrow("Lobster") }
         await #expect(throws: CancellationError.self) { try await load.value }
         _ = try await fetches.wait { $0.contains("cancelled") }
         await fonts.quiesce(family: "Lobster")
@@ -102,9 +102,9 @@ struct LoaderLifecycleTests {
         let regularFile = "https://fonts.gstatic.com/s/inter/v1/400n.ttf"
         let boldFile = "https://fonts.gstatic.com/s/inter/v1/700n.ttf"
 
-        let both = Task { try await fonts.load("Inter", styles: [.regular, .bold]) }
+        let both = Task { try await fonts.loadOrThrow("Inter", styles: [.regular, .bold]) }
         _ = try await harness.server.waitForRequests(count: 2) { harness.isFontFile($0) }
-        let bold = Task { try await fonts.load("Inter", styles: [.bold]) }
+        let bold = Task { try await fonts.loadOrThrow("Inter", styles: [.bold]) }
         _ = try await joins.wait { !$0.isEmpty }
 
         switch last {
@@ -139,9 +139,9 @@ struct LoaderLifecycleTests {
         let events = try await harness.warmUp(fonts)
         let joins = harness.joins(on: fonts)
 
-        let starter = Task { try await fonts.load("Lobster") }
+        let starter = Task { try await fonts.loadOrThrow("Lobster") }
         try await harness.server.waitForRequests { harness.isFontFile($0) }
-        let joiner = Task { try await fonts.load("Lobster") }
+        let joiner = Task { try await fonts.loadOrThrow("Lobster") }
         _ = try await joins.wait { !$0.isEmpty }
         starter.cancel()
         await #expect(throws: CancellationError.self) { try await starter.value }

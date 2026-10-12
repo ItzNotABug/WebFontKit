@@ -31,7 +31,7 @@ Text("Hello").font(web: "Inter", size: 17, weight: .bold) { phase in
 ## Outside a view
 
 ```swift
-try await WebFonts.shared.load("Inter", styles: [.regular, .bold])
+await WebFonts.shared.load("Inter", styles: [.regular, .bold])          // never throws
 label.font = UIFont(name: "Inter", size: 17)
 let results = await WebFonts.shared.load(["Pacifico", "Bebas Neue"])   // never throws
 ```
@@ -40,7 +40,7 @@ let results = await WebFonts.shared.load(["Pacifico", "Bebas Neue"])   // never 
 
 ## Errors and cancellation
 
-A `load` throws `CancellationError`, not a ``WebFontError``, when its caller is cancelled or when `remove` or `removeAll` overtakes it before it stores anything, so a removal is never undone by a load in flight. A load that starts after `remove` returns stores normally.
+A `load` never throws: each style's ``WebFontError`` is in its results. A style has no entry when its caller is cancelled or when `remove` or `removeAll` overtakes it before it stores anything, so a removal is never undone by a load in flight. A load that starts after `remove` returns stores normally.
 
 ## Housekeeping
 
