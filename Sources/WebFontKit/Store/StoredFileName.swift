@@ -43,7 +43,7 @@ enum StoredFileName {
             input.append(0)
             input.append(contentsOf: part.utf8)
         }
-        // The first 8 bytes as lowercase hex, written directly: `String(format:)` per byte dominated every repeat load.
+        // The first 8 bytes as lowercase hex; `String(format:)` per byte was slow.
         var hex: [UInt8] = []
         hex.reserveCapacity(16)
         for byte in SHA256.hash(data: input).prefix(8) {
