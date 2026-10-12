@@ -4,9 +4,9 @@ import Testing
 @testable import WebFontKit
 import WebFontKitTestSupport
 
-@Suite
+@Suite(.timeLimit(.minutes(1)))
 struct GoogleFontsCatalogTests {
-    /// Real Google rows for 25 families (`Tests/Fixtures/catalog/rows.json`) and the catalogue built from them.
+    /// Real Google rows for 25 families, plus one left to CSS2 (no URL), and the catalogue built from them.
     static let rows: [(family: String, style: String, url: String)] = {
         let raw = try! JSONSerialization.jsonObject(with: Fixtures.data("catalog/rows.json")) as! [[String]]
         return raw.map { ($0[0], $0[1], $0[2]) }
@@ -17,9 +17,7 @@ struct GoogleFontsCatalogTests {
         FontStyle(weight: Int(code.filter(\.isNumber))!, italic: code.hasSuffix("i"))
     }
 
-    /// `shipped.tsv`, written with the shipped catalogue: every family, its version and styles, and the
-    /// start of the SHA-256 of its URLs (in the listed style order, newline-separated). The builder
-    /// checked each URL against Google's own answer.
+    /// `shipped.tsv`: each shipped family's version, styles and a digest of its URLs (see SOURCES.md).
     static let listing: [(family: String, version: String, styles: [FontStyle], digest: String)] = {
         String(decoding: Fixtures.data("catalog/shipped.tsv"), as: UTF8.self).split(separator: "\n").map { line in
             let fields = line.split(separator: "\t", omittingEmptySubsequences: false).map(String.init)
@@ -38,8 +36,8 @@ struct GoogleFontsCatalogTests {
     func everyRowMatchesGoogle() {
         for row in Self.rows {
             let style = Self.style(row.style)
-            #expect(Self.catalog.urls(family: row.family, styles: [style])?[style]?.absoluteString == row.url,
-                    "\(row.family) \(row.style)")
+            let url = Self.catalog.urls(family: row.family, styles: [style])?[style]?.absoluteString
+            #expect(url == (row.url.isEmpty ? nil : row.url), "\(row.family) \(row.style)")
         }
     }
 
@@ -50,8 +48,8 @@ struct GoogleFontsCatalogTests {
         #expect(Self.catalog.urls(family: "Lobster", styles: [.regular, .bold]) == nil)
     }
 
-    @Test("an unknown family, or a name in other letter case, is a miss",
-          arguments: ["Lobstr", "lobster", "", "Zzzz Unknown"])
+    /// "Zz Cbsq" is left to CSS2, and its hash meets ABeeZee's at seed 0: the sample's seed must keep them apart.
+    @Test("names the sample doesn't hold miss", arguments: ["Lobstr", "lobster", "", "Zzzz Unknown", "Zz Cbsq"])
     func misses(family: String) {
         #expect(Self.catalog.urls(family: family, styles: [.regular]) == nil)
     }
@@ -97,8 +95,8 @@ struct GoogleFontsCatalogTests {
     @Test("a catalogue is used for a year after it was built, then left to CSS2")
     func expiry() {
         let built = Self.catalog.built
-        #expect(Self.catalog.isCurrent(at: built.addingTimeInterval(GoogleFontsCatalog.lifetime - 1)))
-        #expect(!Self.catalog.isCurrent(at: built.addingTimeInterval(GoogleFontsCatalog.lifetime)))
+        #expect(Self.catalog.isCurrent(at: built.addingTimeInterval(365 * 86_400 - 1)))
+        #expect(!Self.catalog.isCurrent(at: built.addingTimeInterval(365 * 86_400)))
     }
 
     /// A misread build day would date the file decades back (never used) or ahead (never expiring).
@@ -113,7 +111,7 @@ struct GoogleFontsCatalogTests {
     @Test("the shipped catalogue names every fixture style's file, listed and computed, upright and italic")
     func shippedMatchesGoogle() throws {
         let shipped = try #require(GoogleFontsCatalog.shipped())
-        for row in Self.rows {
+        for row in Self.rows where !row.url.isEmpty {
             let style = Self.style(row.style)
             let url = try #require(shipped.urls(family: row.family, styles: [style])?[style],
                                    "\(row.family) \(row.style)")
@@ -139,7 +137,8 @@ struct GoogleFontsCatalogTests {
         }
     }
 
-    /// Asked one at a time, a listed style gets the URL it gets among all of them; any other style misses.
+    /// Asked one at a time, a listed style gets the URL it gets among all of them; any other style misses,
+    /// alone or beside styles the family has.
     @Test("every shipped family answers each style alone", arguments: 0..<4)
     func shippedStyleByStyle(quarter: Int) throws {
         let shipped = try #require(GoogleFontsCatalog.shipped())
@@ -149,14 +148,20 @@ struct GoogleFontsCatalogTests {
                 let alone = shipped.urls(family: entry.family, styles: [style])?[style]
                 #expect(alone == urls[style], "\(entry.family) \(style)")
             }
+            let hasAll = entry.styles.count == Self.allStyles.count
+            #expect((shipped.urls(family: entry.family, styles: Self.allStyles) != nil) == hasAll, "\(entry.family)")
         }
     }
 
-    @Test("a style a family lacks makes the call miss; unknown names rarely match",
-          arguments: ["Lobster", "Roboto Flex", "Bitcount Ink"])
+    @Test("a style a family lacks makes the call miss", arguments: ["Lobster", "Roboto Flex", "Bitcount Ink"])
     func shippedMisses(family: String) throws {
         let shipped = try #require(GoogleFontsCatalog.shipped())
         #expect(shipped.urls(family: family, styles: [FontStyle(weight: 100, italic: true)]) == nil)
+    }
+
+    @Test("unknown names rarely match a shipped family")
+    func shippedUnknownNames() throws {
+        let shipped = try #require(GoogleFontsCatalog.shipped())
         // A 20-bit name hash: an unknown name matches some family about 0.2% of the time (one 404, then CSS2).
         var random = SplitMix64(seed: 0xCA7A)
         let letters = "abcdefghijklmnopqrstuvwxyz "
