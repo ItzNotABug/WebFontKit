@@ -80,11 +80,12 @@ struct GoogleFontsCatalog: Sendable {
 
 private final class BundleToken {}
 
-/// The header: section offsets and decoding parameters. Nothing else is read up front.
+/// The header's fields, and where each code's table starts. Nothing else is read up front.
 private struct Header: Sendable {
     let hashBits, blockSize, rice, day, familyCount: Int
     let hashSeed: UInt32
     let layouts, weightSets, versions, tags, values, codes, rows, masks, index, records: Int
+    let tables: [Int]
 
     init?(_ bytes: UnsafeRawBufferPointer) {
         guard bytes.count >= 56, bytes.prefix(5).elementsEqual("WFKC\u{2}".utf8) else { return nil }
@@ -99,6 +100,9 @@ private struct Header: Sendable {
               weightSets <= versions, versions <= tags, tags <= values, values <= codes, codes + 18 <= rows,
               rows <= masks, masks <= index, index <= records, records <= bytes.count
         else { return nil }
+        // Nine u16 offsets, from the end of the offsets.
+        let first = codes + 18
+        tables = stride(from: codes, to: first, by: 2).map { first + Self.u16(bytes, $0) }
     }
 
     private static func u16(_ bytes: UnsafeRawBufferPointer, _ at: Int) -> Int {
@@ -166,7 +170,7 @@ private struct Decoder {
 
     /// A canonical Huffman symbol, from the code's counts per length and its symbols in code order.
     private func symbol(_ code: Code, _ bits: inout Bits) -> Int? {
-        let table = header.codes + 18 + u16(header.codes + 2 * code.rawValue)
+        let table = header.tables[code.rawValue]
         let window = Int(bits.peek(8))
         var value = 0, first = 0, index = 0
         for length in 1...8 {
@@ -184,17 +188,13 @@ private struct Decoder {
     }
 
     /// One family's record, adding each wanted style's URL. With no name it is only read past.
-    private func family(_ bits: inout Bits, name: [UInt8]?, styles: [FontStyle], into urls: inout [FontStyle: URL]) -> Bool {
+    private func family(_ bits: inout Bits, name: [UInt8]?, styles: [FontStyle],
+                        into urls: inout [FontStyle: URL]) -> Bool {
         let seed = bits.read(8)
         guard let layoutIndex = symbol(.layout, &bits), layoutIndex < byte(header.layouts),
               let versionIndex = symbol(.version, &bits), versionIndex < byte(header.versions)
         else { return false }
         let shape = byte(header.layouts + 1 + layoutIndex), version = byte(header.versions + 1 + versionIndex)
-        var prefix: [UInt8] = []
-        if let name {
-            guard let familyPrefix = Self.prefix(name: name, version: version) else { return false }
-            prefix = familyPrefix
-        }
         var text: [UInt8] = []
         var weights = 0
         for group in 0...(shape >> 4 & 1) {
@@ -213,13 +213,13 @@ private struct Decoder {
                          italic: italic, computed: true, weight: base * 100, axes: axes)
                 else { return false }
                 let offset = bits.flag() ? weightOffset : bits.read(8)
-                guard wanted else { continue }
+                guard wanted, let name else { continue }
                 for style in styles where style.isItalic == italic && weights >> (style.weight / 100) & 1 == 1 {
                     // Other weights differ only in the weight float: patched in, then back out.
                     guard let offset, offset + 4 <= text.count else { return false }
                     let diff = Float(base * 100).bitPattern ^ Float(style.weight).bitPattern
                     Self.flip(&text, at: offset, by: diff)
-                    guard let url = Self.url(prefix: prefix, id: text) else { return false }
+                    guard let url = Self.url(name: name, version: version, id: text) else { return false }
                     urls[style] = url
                     Self.flip(&text, at: offset, by: diff)
                 }
@@ -232,8 +232,8 @@ private struct Decoder {
                              name: style == nil ? nil : name, italic: italic, computed: false, weight: weight,
                              axes: axes)
                     else { return false }
-                    if let style {
-                        guard let url = Self.url(prefix: prefix, id: text) else { return false }
+                    if let style, let name {
+                        guard let url = Self.url(name: name, version: version, id: text) else { return false }
                         urls[style] = url
                     }
                 }
@@ -249,7 +249,10 @@ private struct Decoder {
         if build { text.removeAll(keepingCapacity: true) }
         if axes == Self.whole {
             let length = bits.read(8)
-            if build { text.append(UInt8(seed)) }
+            if build {
+                text.reserveCapacity(length + 1)
+                text.append(UInt8(seed))
+            }
             var read = 0
             while read < length {
                 let zeros = bits.read(8), literals = bits.read(8)
@@ -264,6 +267,7 @@ private struct Decoder {
             guard read == length else { return false }
         } else {
             if let name {
+                text.reserveCapacity(name.count + 20 + 13 * axes)
                 text.append(UInt8(seed))
                 text.append(0)
                 text.append(0)   // the length, set at the end
@@ -342,11 +346,12 @@ private struct Decoder {
     private static let files = Array((CSS2.files.absoluteString + "/").utf8)
     private static let base64url = Array("ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_".utf8)
 
-    /// `<files>/<folder>/v<version>/`, the folder being the name lowercased with its spaces dropped.
-    /// Nil for a name that isn't plain letters, digits and spaces, as no Google name is.
-    private static func prefix(name: [UInt8], version: Int) -> [UInt8]? {
-        var text = files
-        text.reserveCapacity(files.count + name.count + 8)
+    /// `<files>/<folder>/v<version>/<the ID as unpadded base64url>.ttf`, the folder being the name lowercased
+    /// with its spaces dropped. Nil for a name that isn't plain letters, digits and spaces, as no Google name is.
+    private static func url(name: [UInt8], version: Int, id: [UInt8]) -> URL? {
+        var text: [UInt8] = []
+        text.reserveCapacity(files.count + name.count + 8 + (id.count * 4 + 2) / 3 + 4)
+        text.append(contentsOf: files)
         for byte in name {
             switch byte {
             case UInt8(ascii: " "): continue
@@ -359,13 +364,6 @@ private struct Decoder {
         text.append(UInt8(ascii: "v"))
         text.append(contentsOf: String(version).utf8)
         text.append(UInt8(ascii: "/"))
-        return text
-    }
-
-    /// The family's prefix, then the ID as unpadded base64url and `.ttf`.
-    private static func url(prefix: [UInt8], id: [UInt8]) -> URL? {
-        var text = prefix
-        text.reserveCapacity(prefix.count + (id.count * 4 + 2) / 3 + 4)
         var index = 0
         while index < id.count {
             // Three bytes to four characters; a short last group gives two or three.
