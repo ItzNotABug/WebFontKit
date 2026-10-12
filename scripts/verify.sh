@@ -1,8 +1,9 @@
 #!/usr/bin/env bash
 # Everything to pass before a release, stopping at the first failure: build.sh,
-# the macOS suite many times over to catch flaky tests, the strict-concurrency
-# build, the iOS suites on the newest and oldest runtimes, the Example UI tests,
-# 90% line coverage and DocC. Test steps reuse build.sh's builds where the flags match.
+# catalogue fixtures that match the builder, the macOS suite many times over to
+# catch flaky tests, the strict-concurrency build, the iOS suites on the newest and
+# oldest runtimes, the Example UI tests, 90% line coverage and DocC. Test steps
+# reuse build.sh's builds where the flags match.
 #
 # Environment:
 #   WEBFONTKIT_RUNS       parallel macOS suite runs (default 10; 100 before a release flushes rare flakes)
@@ -23,6 +24,27 @@ SKIP_PERF=(--skip WebFontKitPerformanceTests)
 "$ROOT/scripts/build.sh"
 require_ios_simulator
 require_oldest_simulator
+
+log "Catalogue fixtures match the builder"
+python3 -B - "$WORK" <<'EOF' || fail "stale catalogue fixtures: rebuild them (Tests/Fixtures/SOURCES.md)"
+import json, subprocess, sys
+sys.path.insert(0, "scripts")
+import catalog
+rows = json.load(open("Tests/Fixtures/catalog/rows.json"))
+for name, kept in (("sample", rows), ("without-lobster", [row for row in rows if row[0] != "Lobster"])):
+    with open(f"{sys.argv[1]}/{name}.json", "w") as file:
+        json.dump(kept, file)
+    built_path = f"{sys.argv[1]}/{name}.catalog"
+    subprocess.run([sys.executable, "-B", "scripts/catalog.py", "build", "--rows", file.name, built_path],
+                   check=True, stdout=subprocess.DEVNULL)
+    built = open(built_path, "rb").read()
+    committed = open(f"Tests/Fixtures/catalog/{name}.catalog", "rb").read()
+    # Bytes 8-11 are the build day.
+    if built[:8] + built[12:] != committed[:8] + committed[12:]:
+        sys.exit(f"{name}.catalog no longer matches rows.json")
+if not catalog.committed()[1]:
+    sys.exit("shipped.tsv doesn't match the bundled catalogue")
+EOF
 
 log "macOS suite, $RUNS parallel runs"
 for i in $(seq 1 "$RUNS"); do
