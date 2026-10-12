@@ -823,12 +823,13 @@ def keep_unanswered(rows, unanswered, old):
 
 
 def build_verified(rows, unanswered):
-    """(data, file count, skipped, contents) for these rows, verified."""
+    """(data, file count, skipped, left to CSS2, contents) for these rows, verified."""
     families, skipped, sources = parse(rows)
-    left_to_css2 = (skipped | set(unanswered)) - families.keys()
+    # Every name Google listed that isn't stored, including one whose styles are all skipped.
+    left_to_css2 = ({row[0] for row in rows} | set(unanswered)) - families.keys()
     data = build(families, avoid=left_to_css2)
     count, contents = verify(data, families, sources, left_to_css2)
-    return data, count, skipped, contents
+    return data, count, skipped, left_to_css2, contents
 
 
 def command_build(arguments):
@@ -841,7 +842,7 @@ def command_build(arguments):
         rows, unanswered = fetch_rows()
         old = committed()[1]
         kept, unanswered = keep_unanswered(rows, unanswered, old)
-    data, count, skipped, contents = build_verified(rows, unanswered)
+    data, count, skipped, _, contents = build_verified(rows, unanswered)
     missing = len(old.keys() - contents.keys())
     if missing > max(20, len(old) // 20):
         sys.exit(f"{missing} committed families are missing: Google's font list may be incomplete. Nothing written.")
@@ -870,7 +871,7 @@ def command_reckon(arguments):
         rows, unanswered = fetch_rows()
         statuses = list(statuses)
     kept, unanswered = keep_unanswered(rows, unanswered, old)
-    data, count, skipped, new = build_verified(rows, unanswered)
+    data, count, skipped, left_to_css2, new = build_verified(rows, unanswered)
 
     problems, lines = [], []
     # A retired family's files are expected to go; it is reported as removed instead.
@@ -901,7 +902,7 @@ def command_reckon(arguments):
     lines.append(f"Catalogue: {len(new)} families, {count} files, {len(data) / 1024:.0f} KB; "
                  f"{alive} of {len(checked)} committed URLs alive.")
     for label, names in (("Added", added), ("Removed", removed), ("New versions", bumped), ("Styles changed", restyled),
-                         ("No answer, kept as committed", kept), ("Left to CSS2", sorted(skipped | set(unanswered)))):
+                         ("No answer, kept as committed", kept), ("Left to CSS2", sorted(left_to_css2))):
         if names:
             lines.append(f"- **{label} ({len(names)}):** {', '.join(names[:30])}{' …' if len(names) > 30 else ''}")
     lines += [f"- **Problem:** {problem}" for problem in problems]
@@ -909,8 +910,7 @@ def command_reckon(arguments):
     # The library trusts a catalogue for a year, so rebuild an unchanged one early.
     age = today() - struct.unpack_from("<I", old_data, 8)[0] if old_data else 0
     # A family newly left to CSS2 may share a committed hash; the fresh build's seed avoids it.
-    left_to_css2 = sorted((skipped | set(unanswered)) - old.keys())
-    strays = [name for name in left_to_css2 if old_data and shares_hash(old_data, name)]
+    strays = [name for name in sorted(left_to_css2 - old.keys()) if old_data and shares_hash(old_data, name)]
     changed = old != new or strays or age > REFRESH_AFTER_DAYS
     refresh = changed and not problems
     if refresh:
