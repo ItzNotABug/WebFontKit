@@ -65,7 +65,10 @@ struct HousekeepingTests {
         _ = await registry.register(upper, epochs: nil, store: harness.store)
         _ = await registry.register(lower, epochs: nil, store: harness.store)
         #expect(registry.entry(for: lower.key)?.registeredHere == false)
-        let generation = await MainActor.run { registry.generation.value }
+        let (upperCounter, lowerCounter) = await MainActor.run {
+            (registry.generations.counter(for: "Lobster"), registry.generations.counter(for: "lobster"))
+        }
+        let before = await MainActor.run { (upperCounter.value, lowerCounter.value) }
         harness.registrar.observeTable {
             registry.state.withLock { Set($0.table.keys.map(\.family)) }
         }
@@ -80,7 +83,27 @@ struct HousekeepingTests {
         #expect(registry.entry(for: lower.key)?.registeredHere == true)
         #expect(registry.downloaded.map(\.family) == ["lobster"])
         #expect(harness.registrar.registeredURLs == [lower.url])
-        #expect(await MainActor.run { registry.generation.value } > generation)
+        // The removed family's views and the re-registered one's both update.
+        #expect(await MainActor.run { upperCounter.value } > before.0)
+        #expect(await MainActor.run { lowerCounter.value } > before.1)
+    }
+
+    @Test("when the other spelling can't register again, its views still redraw")
+    func sharedNameReregisterFails() async throws {
+        let harness = Harness()
+        let registry = harness.makeRegistry()
+        let upper = try harness.storeFont(Fixtures.lobster, family: "Lobster")
+        let lower = try harness.storeFont(Fixtures.lobster, family: "lobster")
+        _ = await registry.register(upper, epochs: nil, store: harness.store)
+        _ = await registry.register(lower, epochs: nil, store: harness.store)
+        let lowerCounter = await MainActor.run { registry.generations.counter(for: "lobster") }
+        let before = await MainActor.run { lowerCounter.value }
+        harness.registrar.scriptRegister(lower.url, code: FakeRegistrar.Code.invalidFontData)
+
+        _ = try await registry.remove(family: "Lobster", directories: [harness.store.directory])
+
+        #expect(registry.entry(for: lower.key) == nil)
+        #expect(await MainActor.run { lowerCounter.value } > before)
     }
 
     @Test("removing an unregistered entry's family unregisters and registers nothing")

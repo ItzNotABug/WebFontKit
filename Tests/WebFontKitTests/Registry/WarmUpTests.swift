@@ -29,6 +29,20 @@ struct WarmUpTests {
         #expect(harness.logSink.entriesLoggedUnderLock.isEmpty)
     }
 
+    @Test("a warm-up redraws the views of the families it registered, and only those")
+    func warmUpRedraws() async throws {
+        let harness = Harness()
+        try harness.storeFont(Fixtures.lobster, family: "Lobster")
+        let registry = harness.makeRegistry()
+        let lobster = registry.generations.counter(for: "Lobster")
+        let inter = registry.generations.counter(for: "Inter")
+
+        _ = await registry.warmUp(store: harness.store, cacheKey: Harness.defaultKey)
+
+        #expect(lobster.value == 1)
+        #expect(inter.value == 0)
+    }
+
     @Test("of two files for one face, the one matching the current key is kept and the other deleted")
     func keyMatch() async throws {
         let harness = Harness()

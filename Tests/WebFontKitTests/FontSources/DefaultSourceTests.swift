@@ -63,6 +63,65 @@ struct DefaultSourceTests {
         #expect(harness.leftovers.isEmpty)
     }
 
+    private func fetchLobster(_ harness: Harness, catalog: GoogleFontsCatalog = GoogleFontsCatalogTests.catalog)
+        async throws -> Data {
+        try await DefaultFontSource.default.fetch(FontRequest(family: "Lobster"), session: harness.session,
+                                                  logSink: harness.logSink, catalog: catalog)
+    }
+
+    @Test("with a catalogue, fetch downloads the catalogued file with no CSS2 request")
+    func fetchFromCatalog() async throws {
+        let harness = Harness()
+        harness.serveLobster()
+
+        let data = try await fetchLobster(harness)
+
+        #expect(data == Fixtures.data(Fixtures.lobster))
+        #expect(harness.server.requests.map(\.url.absoluteString) == [Harness.lobsterFile])
+    }
+
+    @Test("a catalogued file Google reports gone falls back to CSS2", arguments: [400, 404, 403, 410])
+    func fetchCatalogFallback(status: Int) async throws {
+        let harness = Harness()
+        let fresh = "https://fonts.gstatic.com/s/lobster/v33/fresh.ttf"
+        let css = Fixtures.css2Text("lobster").replacingOccurrences(of: Harness.lobsterFile, with: fresh)
+        let gone = StubResponse(statusCode: status, headers: [:], body: Data())
+        harness.server.respond(to: Harness.lobsterFile, with: gone)
+        harness.server.respond(to: Harness.lobsterCSS2, with: .css(css))
+        harness.server.respond(to: fresh, with: .font(Fixtures.data(Fixtures.lobster)))
+
+        let data = try await fetchLobster(harness)
+
+        #expect(data == Fixtures.data(Fixtures.lobster))
+        #expect(harness.server.requests.map(\.url.absoluteString) == [Harness.lobsterFile, Harness.lobsterCSS2, fresh])
+        #expect(harness.logSink.entries(level: .info).contains {
+            $0.category == "source" && $0.message.contains("catalogued URL for Lobster 400")
+        })
+    }
+
+    @Test("a face the catalogue doesn't hold goes straight to CSS2")
+    func fetchNotCatalogued() async throws {
+        let harness = Harness()
+        harness.serveLobster()
+        let withoutLobster = try #require(GoogleFontsCatalog(data: Fixtures.data("catalog/without-lobster.catalog")))
+
+        let data = try await fetchLobster(harness, catalog: withoutLobster)
+
+        #expect(data == Fixtures.data(Fixtures.lobster))
+        #expect(harness.server.requests.map(\.url.absoluteString) == [Harness.lobsterCSS2, Harness.lobsterFile])
+    }
+
+    @Test("a server error on the catalogued file fails as usual, with no CSS2 request")
+    func fetchCatalogServerError() async throws {
+        let harness = Harness()
+        harness.server.respond(to: Harness.lobsterFile, with: StubResponse(statusCode: 503, headers: [:], body: Data()))
+
+        await #expect(throws: WebFontError.server(statusCode: 503)) {
+            try await fetchLobster(harness)
+        }
+        #expect(harness.server.requests.map(\.url.absoluteString) == [Harness.lobsterFile])
+    }
+
     @Test("fetch's in-memory download cancels a file over the cap while the stub holds the rest")
     func fetchHelperCap() async throws {
         let harness = Harness()

@@ -17,6 +17,9 @@ struct RegistryOrderTests {
         let registry = harness.makeRegistry()
         observeTable(harness, registry)
         let face = try harness.storeFont(Fixtures.lobster, family: "Lobster")
+        // As a view does: read the family's counter, and another family's that must not change.
+        let lobster = await MainActor.run { registry.generations.counter(for: "Lobster") }
+        let other = await MainActor.run { registry.generations.counter(for: "Inter") }
 
         let result = await registry.register(face, epochs: registry.epochs(for: "Lobster"), store: harness.store)
 
@@ -29,7 +32,47 @@ struct RegistryOrderTests {
         #expect(row.byteCount == 392_208)
         #expect(harness.registrar.calls.allSatisfy { !$0.onMainThread })
         #expect(harness.logSink.entriesLoggedUnderLock.isEmpty)
-        #expect(await MainActor.run { registry.generation.value } == 1)
+        #expect(await MainActor.run { lobster.value } == 1)
+        #expect(await MainActor.run { other.value } == 0)
+    }
+
+    @Test("replacing a face stored under an old cache key redraws its views, even when the new file fails")
+    func replaceRedraws() async throws {
+        let harness = Harness()
+        let registry = harness.makeRegistry()
+        let old = try harness.storeFont(Fixtures.lobsterV20, family: "Lobster", cacheKey: "old")
+        _ = await registry.register(old, epochs: nil, store: harness.store)
+        let current = try harness.storeFont(Fixtures.lobster, family: "Lobster")
+        harness.registrar.scriptRegister(current.url, code: FakeRegistrar.Code.invalidFontData)
+        let lobster = await MainActor.run { registry.generations.counter(for: "Lobster") }
+        let before = await MainActor.run { lobster.value }
+
+        let epochs = registry.epochs(for: "Lobster")
+        _ = await registry.registerReplacingStale(current, epochs: epochs, store: harness.store)
+
+        #expect(registry.entry(for: old.key) == nil)
+        #expect(await MainActor.run { lobster.value } > before)
+    }
+
+    @Test("replacing a face redraws its sharers' views too, when they can't register again")
+    func replaceRedrawsSharers() async throws {
+        let harness = Harness()
+        let registry = harness.makeRegistry()
+        let old = try harness.storeFont(Fixtures.lobsterV20, family: "Lobster", cacheKey: "old")
+        _ = await registry.register(old, epochs: nil, store: harness.store)
+        let lower = try harness.storeFont(Fixtures.lobsterV20, family: "lobster", cacheKey: "old")
+        _ = await registry.register(lower, epochs: nil, store: harness.store)
+        let current = try harness.storeFont(Fixtures.lobster, family: "Lobster")
+        harness.registrar.scriptRegister(current.url, code: FakeRegistrar.Code.invalidFontData)
+        harness.registrar.scriptRegister(lower.url, code: FakeRegistrar.Code.invalidFontData)
+        let lowerCounter = await MainActor.run { registry.generations.counter(for: "lobster") }
+        let before = await MainActor.run { lowerCounter.value }
+
+        let epochs = registry.epochs(for: "Lobster")
+        _ = await registry.registerReplacingStale(current, epochs: epochs, store: harness.store)
+
+        #expect(registry.entry(for: lower.key) == nil)
+        #expect(await MainActor.run { lowerCounter.value } > before)
     }
 
     @Test("a second (family, style) with a PostScript name the registry holds is not registered again")
