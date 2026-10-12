@@ -72,11 +72,10 @@ struct PendingClose: Sendable {
         var events: [WebFontEvent] = []
         let loaded = asked.filter { failures[$0] == nil }
         if !loaded.isEmpty { events.append(.loaded(family: family, styles: loaded)) }
-        var errors: [WebFontError] = []
+        var seen: [WebFontError] = []
         for style in asked {
-            if let error = failures[style], !errors.contains(error) { errors.append(error) }
-        }
-        for error in errors {
+            guard let error = failures[style], !seen.contains(error) else { continue }
+            seen.append(error)
             events.append(.failed(family: family, styles: asked.filter { failures[$0] == error }, error: error))
         }
         return events
@@ -120,8 +119,10 @@ struct LoaderState: Sendable {
     }
 
     mutating func recordFailure(_ key: StyleKey, _ error: WebFontError) {
+        // The key leaves the close, so a retry under the same key isn't credited to it.
         for id in closes.keys where closes[id]!.keys.contains(key) {
             closes[id]!.failures[key.style] = error
+            closes[id]!.keys.remove(key)
         }
     }
 
@@ -193,20 +194,14 @@ struct LoaderState: Sendable {
         }
     }
 
-    /// For a cancelled starter: once each style has committed or failed, or once any is abandoned.
+    /// For a cancelled starter: once each remaining style has committed, or once any is abandoned.
     mutating func settleCloses(_ effects: inout Effects) {
         for (id, close) in closes where close.starterCancelled {
-            if close.abandoned {
-                // Abandoned by every caller: only failures already known are sent.
-                let failed = close.styles.filter { close.failures[$0] != nil }
-                let events = PendingClose.events(family: close.family, asked: failed, failures: close.failures)
-                effects.closes.append((close, events))
-            } else if close.keys.allSatisfy({ close.committed.contains($0) || close.failures[$0.style] != nil }) {
-                let events = PendingClose.events(family: close.family, asked: close.styles, failures: close.failures)
-                effects.closes.append((close, events))
-            } else {
-                continue
-            }
+            guard close.abandoned || close.keys.isSubset(of: close.committed) else { continue }
+            // Abandoned by every caller: only failures already known are sent.
+            let styles = close.abandoned ? close.styles.filter { close.failures[$0] != nil } : close.styles
+            let events = PendingClose.events(family: close.family, asked: styles, failures: close.failures)
+            effects.closes.append((close, events))
             closes[id] = nil
         }
     }

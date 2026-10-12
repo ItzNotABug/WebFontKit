@@ -416,10 +416,11 @@ extension WebFonts {
             }
         }
         let effects = state.withLock { state -> Effects in
+            if case .failed(let error) = outcome { state.recordFailure(key, error) }
             for id in state.closes.keys where state.closes[id]!.keys.contains(key) {
                 switch outcome {
                 case .added: state.closes[id]!.committed.insert(key)
-                case .failed(let error): state.closes[id]!.failures[key.style] = error
+                case .failed: break
                 // `remove` overtook it: no closing event is owed.
                 case .overtaken: state.closes[id]!.abandoned = true
                 }

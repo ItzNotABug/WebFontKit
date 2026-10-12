@@ -42,7 +42,6 @@ final class EventLog {
     private struct Load {
         let started: ContinuousClock.Instant
         let id: UUID
-        let styles: Set<FontStyle>
         var givenUp = false
     }
     private var open: [String: Load] = [:]
@@ -84,12 +83,11 @@ final class EventLog {
             // away), and this is it starting again: one row, not a spinner left behind.
             if let earlier = open[key] { discard(earlier.id) }
             let entry = Entry(event: event)
-            open[key] = Load(started: now, id: entry.id, styles: Set(styles))
+            open[key] = Load(started: now, id: entry.id)
             insert(entry)
             if sweeper == nil { scheduleSweep() }
         case .loaded(let family, let styles), .failed(let family, let styles, _):
-            // A load with a missing style closes in parts: the first takes its row, the rest get their own.
-            if let load = openLoad(family, closing: styles),
+            if let load = open.removeValue(forKey: Self.key(family, styles)),
                let index = entries.firstIndex(where: { $0.id == load.id }) {
                 var entry = entries.remove(at: index)
                 entry.event = event
@@ -151,15 +149,6 @@ final class EventLog {
     private func insert(_ entry: Entry) {
         entries.insert(entry, at: 0)
         if entries.count > Self.limit { entries.removeLast(entries.count - Self.limit) }
-    }
-
-    /// The open load these styles close: the exact one, else one of the family that asked for them all.
-    private func openLoad(_ family: String, closing styles: [FontStyle]) -> Load? {
-        let exact = Self.key(family, styles)
-        let key = open[exact] != nil ? exact : open.first { key, load in
-            key.hasPrefix(family + "|") && Set(styles).isSubset(of: load.styles)
-        }?.key
-        return key.flatMap { open.removeValue(forKey: $0) }
     }
 
     private static func key(_ family: String, _ styles: [FontStyle]) -> String {

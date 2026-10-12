@@ -64,7 +64,9 @@ struct CatalogLoadTests {
         let fonts = harness.makeFonts(catalog: GoogleFontsCatalogTests.catalog)
         try await harness.warmUp(fonts)
 
-        await #expect(throws: WebFontError.server(statusCode: 503)) { try await fonts.loadOrThrow("Lato", styles: [.regular]) }
+        await #expect(throws: WebFontError.server(statusCode: 503)) {
+            try await fonts.loadOrThrow("Lato", styles: [.regular])
+        }
         #expect(harness.css2Requests == 0)
         _ = try? await fonts.loadOrThrow("Lato", styles: [.bold])
 
