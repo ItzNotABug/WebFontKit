@@ -194,7 +194,7 @@ extension Registry {
             _ = await registrar.unregister(urls: unregister)
         }
         if !added.isEmpty {
-            await bumpGeneration()
+            await bumpGenerations(of: Set(added.map(\.key.family)).sorted())
         }
         return added.filter(\.counted).count
     }

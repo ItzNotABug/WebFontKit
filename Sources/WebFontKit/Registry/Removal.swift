@@ -56,7 +56,7 @@ extension Registry {
         }
         // Sharers only exist beside removed entries, whose families are in `families`.
         if !families.isEmpty {
-            await bumpGeneration()
+            await bumpGenerations(of: families.sorted())
         }
 
         var failed = false
@@ -135,7 +135,7 @@ extension Registry {
             return (old, old.registeredHere ? state.takeSharers(named: old.postScriptName) : [])
         }
         guard let old else { return [] }
-        await bumpGeneration()
+        await bumpGenerations(of: [key.family])
         if old.registeredHere, let url = old.fileURL {
             _ = await registrar.unregister(urls: [url])
         }

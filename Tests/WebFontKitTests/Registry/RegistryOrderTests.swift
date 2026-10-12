@@ -17,6 +17,9 @@ struct RegistryOrderTests {
         let registry = harness.makeRegistry()
         observeTable(harness, registry)
         let face = try harness.storeFont(Fixtures.lobster, family: "Lobster")
+        // As a view does: read the family's counter, and another family's that must not change.
+        let lobster = await MainActor.run { registry.generations.counter(for: "Lobster") }
+        let other = await MainActor.run { registry.generations.counter(for: "Inter") }
 
         let result = await registry.register(face, epochs: registry.epochs(for: "Lobster"), store: harness.store)
 
@@ -29,7 +32,8 @@ struct RegistryOrderTests {
         #expect(row.byteCount == 392_208)
         #expect(harness.registrar.calls.allSatisfy { !$0.onMainThread })
         #expect(harness.logSink.entriesLoggedUnderLock.isEmpty)
-        #expect(await MainActor.run { registry.generation.value } == 1)
+        #expect(await MainActor.run { lobster.value } == 1)
+        #expect(await MainActor.run { other.value } == 0)
     }
 
     @Test("a second (family, style) with a PostScript name the registry holds is not registered again")

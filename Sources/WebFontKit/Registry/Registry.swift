@@ -58,13 +58,32 @@ struct Epochs: Sendable, Hashable {
     var family: Int
 }
 
-/// Separate from the locked table because an `@Observable` class can't be `Sendable`.
+/// A change counter per family, which `.font(web:)` reads so a finished face re-renders only
+/// the views showing that family. Separate from the locked table because an `@Observable`
+/// class can't be `Sendable`.
 @MainActor
-@Observable
-final class RegistryGeneration {
-    private(set) var value = 0
+final class RegistryGenerations {
+    private var counters: [String: FamilyGeneration] = [:]
 
     nonisolated init() {}
+
+    func counter(for family: String) -> FamilyGeneration {
+        if let counter = counters[family] { return counter }
+        let counter = FamilyGeneration()
+        counters[family] = counter
+        return counter
+    }
+
+    /// A family no view has read has no counter, and nothing to re-render.
+    func bump(_ families: [String]) {
+        for family in families { counters[family]?.bump() }
+    }
+}
+
+@MainActor
+@Observable
+final class FamilyGeneration {
+    private(set) var value = 0
 
     func bump() {
         value += 1
@@ -151,7 +170,7 @@ final class Registry: Sendable {
     let registrar: any FontRegistrar
     let files: any FileOperations
     let logSink: any LogSink
-    let generation = RegistryGeneration()
+    let generations = RegistryGenerations()
     let state = Locked(RegistryState())
     let faceTurns = Turns<FaceKey>()
     let nameTurns = Turns<String>()
@@ -195,14 +214,14 @@ final class Registry: Sendable {
         state.withLock { $0.epochs(for: family) }
     }
 
-    // MARK: Logging and the generation
+    // MARK: Logging and the generations
 
     func log(_ category: String, _ level: OSLogType, _ message: String, private values: [String] = []) {
         logSink.log(category, level, message, private: values)
     }
 
-    func bumpGeneration() async {
-        await MainActor.run { generation.bump() }
+    func bumpGenerations(of families: [String]) async {
+        await MainActor.run { generations.bump(families) }
     }
 
     // MARK: Inserting
@@ -228,7 +247,7 @@ final class Registry: Sendable {
             return true
         }
         if added {
-            await bumpGeneration()
+            await bumpGenerations(of: [key.family])
         }
         return added
     }
@@ -245,7 +264,7 @@ final class Registry: Sendable {
             return true
         }
         if added {
-            await bumpGeneration()
+            await bumpGenerations(of: [key.family])
         }
         return added
     }

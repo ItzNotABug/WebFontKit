@@ -85,6 +85,27 @@ struct ModifierTests {
         #expect(!view.choices.elements.contains { if case .fallback = $0 { true } else { false } })
     }
 
+    @Test("another family's face re-renders nothing; a change to the view's own family does")
+    func otherFamilyDoesNotRerender() async throws {
+        let harness = Harness()
+        harness.server.serveGoogle()
+        let fonts = harness.makeFonts()
+        try await harness.warmUp(fonts)
+        try await fonts.load("Lobster")
+        let view = ModifierHarness(fonts: fonts)
+        #expect(try await view.settledPhases() == [.loaded])
+        view.render()
+        let bodies = view.choices.elements.count
+
+        try await fonts.load("Inter", styles: [.regular, .bold])
+        view.render()
+        #expect(view.choices.elements.count == bodies)
+
+        try await fonts.remove("Lobster")
+        view.render()
+        try await view.choices.wait { $0.count > bodies }
+    }
+
     @Test("not registered: the fallback first, then the PostScript name once loaded, with .loading then .loaded")
     func swap() async throws {
         let harness = Harness()

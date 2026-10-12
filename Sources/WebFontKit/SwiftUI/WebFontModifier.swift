@@ -109,7 +109,7 @@ struct WebFontModifier: ViewModifier {
         Self.isEvaluatingBody = true
         defer { Self.isEvaluatingBody = false }
         #endif
-        _ = fonts.registry.generation.value
+        _ = fonts.registry.generations.counter(for: family).value
         let name = fonts.postScriptName(family: family, style: style)
         #if DEBUG
         recordChoice?(name.map { .postScriptName($0) } ?? .fallback(fallbackFont))
