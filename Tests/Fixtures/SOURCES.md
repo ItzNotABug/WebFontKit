@@ -70,7 +70,9 @@ Responses captured from the live endpoint with curl; each file name carries its 
 
 ## catalog/
 
-`rows.json` holds Google's real CSS2 answers (family, style, file URL) for ten families, captured 2026-10-08: listed and computed weights, upright and italic, and the first and last family in the catalogue's sort order. `sample.catalog` and `without-lobster.catalog` are built from them by `scripts/catalog.sh --rows`.
+`rows.json` holds Google's real CSS2 answers (family, style, file URL): ten families captured 2026-10-08 (listed and computed weights, upright and italic), plus fifteen taken on 2026-10-12 from the format-1 catalogue, whose URLs the builder had checked against Google's answers. The fifteen are families whose shipped records take a rarer path: several axes, one-off axis tags, IDs kept whole (Bitcount Ink, Roboto Flex), static fonts with an axis, a non-default `wght` value, italic weights unlike the upright, and the highest version. Built into a 25-family catalogue, most of them decode the common way, as the mask rows learn their differences; the shipped-catalogue tests cover the rarer paths. One more row, "Zz Cbsq" with no URL, is a made-up name left to CSS2 whose hash meets ABeeZee's at seed 0, so the fixtures are built with a nonzero hash seed. `sample.catalog` is built from these rows by `scripts/catalog.sh --rows`, and `without-lobster.catalog` from them less Lobster's (as `scripts/verify.sh` checks).
+
+`shipped.tsv` is written with the shipped catalogue by `scripts/catalog.sh` and `scripts/reckon.sh`: every family, its version and styles, and the first 8 hex digits of the SHA-256 of its URLs in that order, newline-separated. The build checks each URL against Google's answer; the Swift tests check the shipped catalogue against this listing.
 
 ## Perf/
 
