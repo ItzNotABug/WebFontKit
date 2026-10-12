@@ -88,6 +88,20 @@ struct DefaultSourceTests {
 
         #expect(data == Fixtures.data(Fixtures.lobster))
         #expect(harness.server.requests.map(\.url.absoluteString) == [Harness.lobsterFile, Harness.lobsterCSS2, fresh])
+        #expect(harness.logSink.entries(level: .info).contains { $0.message.contains("catalogued URL for Lobster") })
+    }
+
+    @Test("a face the catalogue doesn't hold goes straight to CSS2")
+    func fetchNotCatalogued() async throws {
+        let harness = Harness()
+        harness.serveLobster()
+        let withoutLobster = try #require(GoogleFontsCatalog(data: Fixtures.data("catalog/without-lobster.catalog")))
+
+        let data = try await DefaultFontSource.default.fetch(FontRequest(family: "Lobster"), session: harness.session,
+                                                             logSink: harness.logSink, catalog: withoutLobster)
+
+        #expect(data == Fixtures.data(Fixtures.lobster))
+        #expect(harness.server.requests.map(\.url.absoluteString) == [Harness.lobsterCSS2, Harness.lobsterFile])
     }
 
     @Test("a server error on the catalogued file fails as usual, with no CSS2 request")

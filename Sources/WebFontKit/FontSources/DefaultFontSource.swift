@@ -23,7 +23,8 @@ public struct DefaultFontSource: FontSource {
             do {
                 return try await Downloader.data(for: CSS2.request(for: url), session: session)
             } catch let error as WebFontError where error.meansGone {
-                logSink.log("fetch", .info, "The catalogued URL for \(font.family) failed (\(error)); asking CSS2")
+                let face = FaceKey(family: font.family, style: font.style)
+                logSink.log("source", .info, "The catalogued URL for \(face) failed (\(error)); asking CSS2")
             }
         }
         let url = try await CSS2.resolve(family: font.family, style: font.style, session: session, logSink: logSink)
