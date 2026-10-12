@@ -15,6 +15,7 @@ concurrency:
 
 env:
   CATALOGUE: Sources/WebFontKit/Resources/GoogleFonts.catalog
+  LISTING: Tests/Fixtures/catalog/shipped.tsv
 
 jobs:
   reckon:
@@ -47,7 +48,7 @@ jobs:
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git switch -C catalog-refresh
-          git commit -qm "Refresh the Google Fonts catalogue" -- "$CATALOGUE"
+          git commit -qm "Refresh the Google Fonts catalogue" -- "$CATALOGUE" "$LISTING"
           git push -qf origin catalog-refresh
           if [ "$open" = OPEN ]; then
             gh pr edit catalog-refresh --body-file "$RUNNER_TEMP/reckon.md"

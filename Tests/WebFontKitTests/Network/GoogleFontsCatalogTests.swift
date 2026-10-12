@@ -1,3 +1,4 @@
+import CryptoKit
 import Foundation
 import Testing
 @testable import WebFontKit
@@ -87,6 +88,36 @@ struct GoogleFontsCatalogTests {
             #expect(url.lastPathComponent == google.lastPathComponent, "\(row.family) \(row.style)")
             #expect(url.pathComponents[2] == google.pathComponents[2])
         }
+    }
+
+    /// `shipped.tsv`, written with the shipped catalogue: every family, its version and styles, and the
+    /// start of the SHA-256 of its URLs (in the listed style order, newline-separated). The builder
+    /// checked each URL against Google's own answer.
+    @Test("the shipped catalogue gives every listed family's exact URLs, every style")
+    func shippedMatchesListing() throws {
+        let shipped = try #require(GoogleFontsCatalog.shipped())
+        let lines = String(decoding: Fixtures.data("catalog/shipped.tsv"), as: UTF8.self).split(separator: "\n")
+        #expect(lines.count > 1_000)
+        for line in lines {
+            let fields = line.split(separator: "\t", omittingEmptySubsequences: false).map(String.init)
+            try #require(fields.count == 4, "\(line)")
+            let styles = fields[2].split(separator: ",").map { Self.style(String($0)) }
+            let urls = try #require(shipped.urls(family: fields[0], styles: styles), "\(fields[0])")
+            let listed = styles.map { urls[$0]!.absoluteString }
+            #expect(listed.allSatisfy { $0.contains("/v\(fields[1])/") }, "\(fields[0])")
+            let digest = SHA256.hash(data: Data(listed.joined(separator: "\n").utf8)).map { String(format: "%02x", $0) }.joined()
+            #expect(digest.hasPrefix(fields[3]), "\(fields[0])")
+        }
+    }
+
+    @Test("a style a family lacks makes the call miss; unknown names rarely match", arguments: ["Lobster", "Roboto Flex", "Bitcount Ink"])
+    func shippedMisses(family: String) throws {
+        let shipped = try #require(GoogleFontsCatalog.shipped())
+        #expect(shipped.urls(family: family, styles: [FontStyle(weight: 100, italic: true)]) == nil)
+        // A 20-bit name hash: an unknown name matches some family about 0.2% of the time (one 404, then CSS2).
+        var random = SplitMix64(seed: 0xCA7A)
+        let unknown = (0..<2_000).map { _ in String((0..<12).map { _ in "abcdefghijklmnopqrstuvwxyz ".randomElement(using: &random)! }) }
+        #expect(unknown.filter { shipped.urls(family: $0, styles: [.regular]) != nil }.count < 20)
     }
 
     @Test("the shipped catalogue opens and knows Lobster by its stable file ID")

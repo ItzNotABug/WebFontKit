@@ -153,7 +153,7 @@ for await event in WebFonts.shared.events {
 
 ## Good to know
 
-- **Fast first loads.** A bundled catalogue of Google's font URLs (~133 KB) means a new font is a single download.
+- **Fast first loads.** A bundled catalogue of Google's font URLs (~21 KB) means a new font is a single download.
   Anything it doesn't cover asks Google instead, and a weekly job keeps it current.
 
 - **Load every style you draw.** iOS never fakes bold or italic for a downloaded font. A style the family doesn't have
