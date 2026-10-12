@@ -34,3 +34,13 @@ enum ErrorMapping {
         }
     }
 }
+
+extension WebFontError {
+    /// Google no longer has the file: a 400 or 404 (both `.notFound`), 403 or 410.
+    var meansGone: Bool {
+        switch self {
+        case .notFound, .server(statusCode: 403), .server(statusCode: 410): true
+        default: false
+        }
+    }
+}
