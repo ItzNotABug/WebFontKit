@@ -54,6 +54,27 @@ struct RegistryOrderTests {
         #expect(await MainActor.run { lobster.value } > before)
     }
 
+    @Test("replacing a face redraws its sharers' views too, when they can't register again")
+    func replaceRedrawsSharers() async throws {
+        let harness = Harness()
+        let registry = harness.makeRegistry()
+        let old = try harness.storeFont(Fixtures.lobsterV20, family: "Lobster", cacheKey: "old")
+        _ = await registry.register(old, epochs: nil, store: harness.store)
+        let lower = try harness.storeFont(Fixtures.lobsterV20, family: "lobster", cacheKey: "old")
+        _ = await registry.register(lower, epochs: nil, store: harness.store)
+        let current = try harness.storeFont(Fixtures.lobster, family: "Lobster")
+        harness.registrar.scriptRegister(current.url, code: FakeRegistrar.Code.invalidFontData)
+        harness.registrar.scriptRegister(lower.url, code: FakeRegistrar.Code.invalidFontData)
+        let lowerCounter = await MainActor.run { registry.generations.counter(for: "lobster") }
+        let before = await MainActor.run { lowerCounter.value }
+
+        let epochs = registry.epochs(for: "Lobster")
+        _ = await registry.registerReplacingStale(current, epochs: epochs, store: harness.store)
+
+        #expect(registry.entry(for: lower.key) == nil)
+        #expect(await MainActor.run { lowerCounter.value } > before)
+    }
+
     @Test("a second (family, style) with a PostScript name the registry holds is not registered again")
     func sharedNameWithinRegistry() async throws {
         let harness = Harness()

@@ -16,10 +16,12 @@ struct FileNameTests {
 
     @Test("the key hash is the first 8 bytes of SHA-256 in lowercase hex, for any family, style and key")
     func keyHashFormat() {
-        let families = ["Lobster", "Noto Sans Kannada", "Été", "a@b/c", "", "日本語", String(repeating: "x", count: 300)]
+        let families = ["Lobster", "Noto Sans Kannada", "Été", "a@b/c", "", "日本語",
+                        String(repeating: "x", count: 300)]
         let keys = ["", "k", "Lobster|400|n", "v2 \u{0}?", "🙂"]
+        let styles = [FontStyle.regular, .bold, .italic, FontStyle(weight: 100), FontStyle(weight: 900, italic: true)]
         for family in families {
-            for style in [FontStyle.regular, .bold, .italic, FontStyle(weight: 100), FontStyle(weight: 900, italic: true)] {
+            for style in styles {
                 for key in keys {
                     var input = Data(family.utf8)
                     for part in [String(style.weight), style.isItalic ? "i" : "n", key] {

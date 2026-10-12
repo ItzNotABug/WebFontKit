@@ -107,6 +107,21 @@ struct ModifierTests {
         #expect(view.choices.elements.last == .fallback(.system(size: 19, weight: .regular)))
     }
 
+    @Test("a view drawn between the regular face's load and its alias ends on the regular face")
+    func aliasRedraws() async throws {
+        let harness = Harness()
+        harness.server.serveGoogle()
+        let fonts = harness.makeFonts()
+        try await harness.warmUp(fonts)
+        let view = ModifierHarness(fonts: fonts)
+        view.model.weight = .bold
+        fonts.hooks.beforeAlias = { await MainActor.run { view.render() } }
+        view.render()
+        try await view.phases.wait { $0.last == .loaded }
+        view.render()
+        #expect(view.choices.elements.last == .postScriptName("Lobster-Regular"))
+    }
+
     @Test("not registered: the fallback first, then the PostScript name once loaded, with .loading then .loaded")
     func swap() async throws {
         let harness = Harness()
