@@ -79,7 +79,7 @@ struct GoogleFontsCatalogTests {
         }
     }
 
-    /// Random damage rarely leaves a valid header, so each header byte gets extremes in turn.
+    /// Random damage rarely leaves a valid header, so each header field byte gets extremes in turn.
     @Test("any one header byte at an extreme never crashes or hangs", arguments: 5..<56)
     func damagedHeader(at offset: Int) {
         for value: UInt8 in [0, 1, 0x7F, 0x80, 0xFF] {

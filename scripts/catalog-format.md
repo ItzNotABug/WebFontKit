@@ -15,6 +15,12 @@ A Google file ID is a seed byte, then Google's description of the file XOR the s
 axis (5-byte tag, 4-byte value). The catalogue keeps each family's seed and the fields that differ;
 the reader rebuilds the description and XORs it with the mask row.
 
+## URLs
+
+`https://fonts.gstatic.com/s/<folder>/v<version>/<ID as unpadded base64url>.ttf`, where the folder is
+the family name lowercased with its spaces dropped. A name with anything but ASCII letters, digits
+and spaces has no Google folder, so the reader returns no URL for it.
+
 ## Finding a family
 
 A name's hash is the top *hash bits* of 32-bit FNV-1a over its UTF-8 bytes, starting from

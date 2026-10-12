@@ -23,7 +23,7 @@ REFRESH_AFTER_DAYS = 90
 
 
 def slug(family):
-    # As GoogleFontsCatalog.swift spells Google's folder.
+    # Google's folder for a family (see catalog-format.md).
     return family.lower().replace(" ", "")
 
 
@@ -797,7 +797,7 @@ def write_bundled(data, contents):
 
 
 def committed():
-    """(bytes, contents) of the bundled catalogue, named by its listing; empty when missing or unreadable."""
+    """(bytes, contents) of the bundled catalogue, named by its listing, which must match; else empty."""
     try:
         with open(BUNDLED, "rb") as file:
             data = file.read()
@@ -842,7 +842,7 @@ def command_build(arguments):
         rows, unanswered = fetch_rows()
         old = committed()[1]
         kept, unanswered = keep_unanswered(rows, unanswered, old)
-    data, count, skipped, _, contents = build_verified(rows, unanswered)
+    data, count, skipped, left_to_css2, contents = build_verified(rows, unanswered)
     missing = len(old.keys() - contents.keys())
     if missing > max(20, len(old) // 20):
         sys.exit(f"{missing} committed families are missing: Google's font list may be incomplete. Nothing written.")
@@ -854,7 +854,7 @@ def command_build(arguments):
     print(f"{arguments.out or BUNDLED}: {len(contents)} families, {count} files, {len(data) / 1024:.0f} KB")
     if kept:
         print(f"No answer, kept as committed: {', '.join(kept)}", file=sys.stderr)
-    for label, names in (("unusual URLs", skipped), ("no answer", unanswered)):
+    for label, names in (("unusual URLs", left_to_css2 - set(unanswered)), ("no answer", unanswered)):
         if names:
             print(f"Left to CSS2, {label}: {', '.join(sorted(names))}", file=sys.stderr)
 

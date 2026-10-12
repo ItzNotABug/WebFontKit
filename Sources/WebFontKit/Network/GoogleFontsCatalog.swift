@@ -12,7 +12,7 @@ struct GoogleFontsCatalog: Sendable {
     /// Mapped on first use; nil once a year old, or it would pin old versions.
     static let bundled: GoogleFontsCatalog? = shipped().flatMap { $0.isCurrent(at: .now) ? $0 : nil }
 
-    /// The packaged file, whatever its age; not cached.
+    /// The packaged file, whatever its age; not cached, so an expired one is unmapped at once.
     static func shipped() -> GoogleFontsCatalog? {
         resourceBundle()?.url(forResource: "GoogleFonts", withExtension: "catalog")
             .flatMap { try? Data(contentsOf: $0, options: .alwaysMapped) }
@@ -47,7 +47,7 @@ struct GoogleFontsCatalog: Sendable {
         date.timeIntervalSince(built) < Self.lifetime
     }
 
-    /// Each style's URL, or nil if any is missing.
+    /// Each style's URL, or nil if any is missing (the caller then asks CSS2).
     func urls(family: String, styles: [FontStyle]) -> [FontStyle: URL]? {
         let name = Array(family.utf8)
         return data.withUnsafeBytes { Decoder(bytes: $0, header: header).urls(name: name, styles: styles) }
@@ -331,7 +331,7 @@ private struct Decoder {
     private static let files = Array((CSS2.files.absoluteString + "/").utf8)
     private static let base64url = Array("ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_".utf8)
 
-    /// The file's URL; nil unless the name is ASCII letters, digits and spaces.
+    /// The file's URL; nil unless the name is ASCII letters, digits and spaces, as every Google name is.
     private static func url(name: [UInt8], version: Int, id: [UInt8]) -> URL? {
         var text: [UInt8] = []
         text.reserveCapacity(files.count + name.count + 8 + (id.count * 4 + 2) / 3 + 4)
