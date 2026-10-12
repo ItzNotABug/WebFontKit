@@ -95,7 +95,7 @@ def parse(rows):
     for name, style, url in rows:
         match = URL.match(url)
         weight = int(style.rstrip("i"))
-        if not match or match.group(1) != slug(name) or weight % 100 or not 100 <= weight <= 1000:
+        if not match or match.group(1) != slug(name) or weight % 100 or not 100 <= weight <= 900:
             skipped.add(name)
             continue
         try:
@@ -147,7 +147,6 @@ def weight_offset(group):
     return offset
 
 
-# The format is documented in Sources/WebFontKit/Network/GoogleFontsCatalog.swift.
 WGHT = bytes([0xF4, 0xD0, 0x9D, 0xBB, 0x07])     # the axis tag "wght" as Google's varint
 WHOLE = 15                                        # axis count that marks an ID kept whole
 CODES = ("layout", "version", "weights", "axis weights", "base", "axes", "variable axes", "tag", "value")
@@ -313,7 +312,7 @@ def canonical(lengths):
         code <<= length - previous
         codes[symbol] = (code, length)
         code, previous = code + 1, length
-    counts = bytes(sum(1 for each, _ in order if each == length) for length in range(1, 9))
+    counts = bytes(sum(1 for code_length, _ in order if code_length == length) for length in range(1, 9))
     return codes, counts + bytes(symbol for _, symbol in order)
 
 
@@ -515,9 +514,8 @@ def build(families, avoid):
         codes[code], table = canonical(huffman(counts[code] or {0: 1}))
         code_tables.append(table)
 
-    # Per block: Rice-coded gaps between the sorted name hashes, then the records.
     hash_list = [hashes[name] for name in order]
-    # A block's first hash is in the index, so only the gaps inside a block are coded.
+    # Per block: Rice-coded gaps between sorted name hashes (its first hash is in the index), then its records.
     gaps = [hash_list[position] - hash_list[position - 1] for position in range(1, len(hash_list)) if position % BLOCK]
     rice = min(range(1, 20), key=lambda width: sum((gap >> width) + 1 + width for gap in gaps))
     stream, index = BitWriter(), bytearray()
@@ -678,7 +676,7 @@ class Catalogue:
                     continue
                 row = self.row_offsets + 2 * seed
                 if row + 4 > self.mask_rows:
-                    raise ValueError("A mask row shorter than its ID.")
+                    raise ValueError("A damaged mask row offset.")
                 start, end = struct.unpack_from("<HH", self.data, row)
                 if len(plain) - 1 > end - start or self.mask_rows + end > self.index:
                     raise ValueError("A mask row shorter than its ID.")
@@ -741,6 +739,14 @@ def read(data, names):
     """family -> (version, {(italic, weight): url}) for the names it holds. ValueError for a damaged file."""
     return {name: (version, {style: url_for(slug(name), version, identifier) for style, identifier in files.items()})
             for name, (version, files) in Catalogue(data).read(names).items()}
+
+
+def reads(data, name):
+    """Whether the catalogue gives name files. A record that can't be rebuilt for it is a miss, as in Swift."""
+    try:
+        return bool(read(data, [name]))
+    except ValueError:
+        return False
 
 
 def listing(contents):
@@ -903,7 +909,7 @@ def command_reckon(arguments):
     # The library trusts a catalogue for a year from its build day, so rebuild an unchanged one early.
     age = today() - struct.unpack_from("<I", old_data, 8)[0] if old_data else 0
     # A family newly left to CSS2 can share a committed family's hash; the fresh build's seed avoids it.
-    strays = sorted(read(old_data, sorted((skipped | set(unanswered)) - old.keys()))) if old_data else []
+    strays = [name for name in sorted((skipped | set(unanswered)) - old.keys()) if old_data and reads(old_data, name)]
     changed = old != new or strays or age > REFRESH_AFTER_DAYS
     refresh = changed and not problems
     if refresh:

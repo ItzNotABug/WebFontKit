@@ -9,13 +9,13 @@ import Foundation
 /// (italic, a static weight other than 400 as a varint, one block per axis). Records keep the
 /// fields that differ; the reader rebuilds the description and XORs.
 ///
-/// Names are found by the top hash bits of 32-bit FNV-1a (basis `0x811C9DC5` XOR the hash seed). An
-/// unknown name matches a family ~0.2% of the time: its URL 404s and the loader asks CSS2.
+/// Names are found by the top hash bits of 32-bit FNV-1a (basis `0x811C9DC5` XOR the hash seed), so an
+/// unknown name matches a family ~0.2% of the time.
 ///
-/// Built by `scripts/catalog.sh`. Little-endian, sections in this order:
+/// Built by `scripts/catalog.sh`. Little-endian, counts one byte, sections in this order:
 /// - header: `WFKC`, format 2, hash bits, block size, Rice parameter, build day (u32, days since
 ///   1970), hash seed (u16), family count (u16), then the offsets (u32) of the ten sections below
-/// - layouts: count, then per layout bit 4 (a second group) and each group's flags in bits 2–3
+/// - layouts: count, then a byte each: bit 4 a second group, and each group's flags in bits 2–3
 ///   and 0–1 (1 italic, 2 computed: one stored ID gives every weight)
 /// - weight sets: count, then u16s, bit n for weight n × 100
 /// - versions: count, then bytes
@@ -94,7 +94,7 @@ private struct Header: Sendable {
     let tables: [Int]
 
     init?(_ bytes: UnsafeRawBufferPointer) {
-        guard bytes.count >= 56, bytes.prefix(5).elementsEqual("WFKC\u{2}".utf8) else { return nil }
+        guard bytes.count >= 56, bytes.prefix(4).elementsEqual("WFKC".utf8), bytes[4] == 2 else { return nil }
         (hashBits, blockSize, rice) = (Int(bytes[5]), Int(bytes[6]), Int(bytes[7]))
         (day, hashSeed, familyCount) = (Self.u32(bytes, 8), UInt32(Self.u16(bytes, 12)), Self.u16(bytes, 14))
         (layouts, weightSets, versions, tags, values) =
@@ -120,7 +120,7 @@ private struct Header: Sendable {
     }
 }
 
-/// Reads the mapped bytes in place. Every read is bounds-checked: damaged data only ever misses.
+/// Reads the mapped bytes in place. Every read is bounds-checked, so damaged data never traps.
 private struct Decoder {
     let bytes: UnsafeRawBufferPointer
     let header: Header
@@ -362,7 +362,7 @@ private struct Decoder {
     private static let base64url = Array("ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_".utf8)
 
     /// `<files>/<folder>/v<version>/<the ID as unpadded base64url>.ttf`, the folder being the name lowercased
-    /// with its spaces dropped. Nil for a name that isn't plain letters, digits and spaces, as no Google name is.
+    /// with its spaces dropped. Nil for a name with anything but ASCII letters, digits and spaces (no Google name has).
     private static func url(name: [UInt8], version: Int, id: [UInt8]) -> URL? {
         var text: [UInt8] = []
         text.reserveCapacity(files.count + name.count + 8 + (id.count * 4 + 2) / 3 + 4)

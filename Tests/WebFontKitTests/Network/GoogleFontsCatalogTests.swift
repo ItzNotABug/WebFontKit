@@ -116,9 +116,11 @@ struct GoogleFontsCatalogTests {
             let url = try #require(shipped.urls(family: row.family, styles: [style])?[style],
                                    "\(row.family) \(row.style)")
             let google = try #require(URL(string: row.url))
-            // File IDs outlive font versions, so a refreshed catalogue still matches these rows.
-            #expect(url.lastPathComponent == google.lastPathComponent, "\(row.family) \(row.style)")
-            #expect(url.pathComponents[2] == google.pathComponents[2])
+            #expect(url.pathComponents[2] == google.pathComponents[2], "\(row.family) \(row.style) folder")
+            // A refreshed catalogue may hold a newer version, whose IDs can differ; within one, they can't.
+            if url.pathComponents[3] == google.pathComponents[3] {
+                #expect(url.lastPathComponent == google.lastPathComponent, "\(row.family) \(row.style)")
+            }
         }
     }
 

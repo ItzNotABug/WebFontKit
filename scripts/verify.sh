@@ -26,7 +26,7 @@ require_ios_simulator
 require_oldest_simulator
 
 log "Catalogue fixtures match the builder"
-python3 -B - <<'EOF' || fail "stale catalogue fixtures: rebuild them (Tests/Fixtures/SOURCES.md)"
+python3 -B - <<'EOF' || fail "the catalogue check failed (see above)"
 import json, sys
 sys.path.insert(0, "scripts")
 import catalog
@@ -36,9 +36,13 @@ for name, kept in (("sample", rows), ("without-lobster", [row for row in rows if
     committed = open(f"Tests/Fixtures/catalog/{name}.catalog", "rb").read()
     # Bytes 8-11 are the build day.
     if built[:8] + built[12:] != committed[:8] + committed[12:]:
-        sys.exit(f"{name}.catalog no longer matches rows.json")
+        sys.exit(f"{name}.catalog no longer matches rows.json: rebuild it (Tests/Fixtures/SOURCES.md)")
 if not catalog.committed()[1]:
     sys.exit("shipped.tsv doesn't match the bundled catalogue")
+# Reckon refreshes it after 90 days; a release must not ship one near its year's expiry.
+age = catalog.today() - int.from_bytes(open(catalog.BUNDLED, "rb").read()[8:12], "little")
+if age > 120:
+    sys.exit(f"The bundled catalogue is {age} days old: merge Reckon's refresh or run scripts/catalog.sh")
 EOF
 
 log "macOS suite, $RUNS parallel runs"
