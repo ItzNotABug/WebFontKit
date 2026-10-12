@@ -3,7 +3,7 @@
 build against the committed one. Run through scripts/catalog.sh and scripts/reckon.sh.
 
 Keeps a hash of each family name, its version and enough to rebuild each file ID; the layout is
-documented in GoogleFontsCatalog.swift. The family names live in Tests/Fixtures/catalog/shipped.tsv.
+documented in scripts/catalog-format.md. The family names live in Tests/Fixtures/catalog/shipped.tsv.
 """
 import argparse, base64, binascii, collections, concurrent.futures, dataclasses, hashlib, heapq, http.client, json, os
 import random, re, struct, sys, threading, time, urllib.parse

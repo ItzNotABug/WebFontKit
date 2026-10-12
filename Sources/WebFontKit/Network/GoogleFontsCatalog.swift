@@ -4,39 +4,10 @@ import Foundation
 /// Memory-mapped and read in place. Damaged data never traps: a lookup misses or, at worst, gives a URL
 /// that 404s, and the loader then asks CSS2.
 ///
-/// An ID is a seed byte, then Google's description XOR the seed's mask row:
-/// `00 <ID length − 5> 00 <name length> <name> [10 02] [18 <weight>] [3a 0b 08 <tag> 15 <float32>]… 20 00`
-/// (italic, a static weight other than 400 as a varint, one block per axis). Records keep the
-/// fields that differ; the reader rebuilds the description and XORs.
-///
-/// Names are found by the top hash bits of 32-bit FNV-1a (basis `0x811C9DC5` XOR the hash seed), so an
-/// unknown name matches a family ~0.2% of the time.
-///
-/// Built by `scripts/catalog.sh`. Little-endian, counts one byte, sections in this order:
-/// - header: `WFKC`, format 2, hash bits, block size, Rice parameter, build day (u32, days since
-///   1970), hash seed (u16), family count (u16), then the offsets (u32) of the ten sections below
-/// - layouts: count, then a byte each: bit 4 a second group, and each group's flags in bits 2–3
-///   and 0–1 (1 italic, 2 computed: one stored ID gives every weight)
-/// - weight sets: count, then u16s, bit n for weight n × 100
-/// - versions: count, then bytes
-/// - axis tags: count, then per tag its 5 bytes, flags (bit 0 wght, bits 4–7 other-value count),
-///   usual value (4 bytes), first other-value index
-/// - other values: 4 bytes each
-/// - codes: nine u16 offsets past themselves, then per code its canonical Huffman table: counts
-///   per length 1–8, then symbols. In order: layout, version, weights, axis weights (a computed
-///   group's set), base, axes, variable axes (a computed ID's count), tag, value
-/// - row offsets: 257 u16s into the mask rows (row n ends where n + 1 starts)
-/// - mask rows: row byte i masks ID byte i + 1
-/// - block index: per block, its first name hash and its bit offset into the records (u24 each)
-/// - records, MSB-first: per block the gaps between sorted name hashes (Rice: ones ended by a 0,
-///   then the Rice parameter's bits), then per family its seed (8 bits), layout, version, and per
-///   group: a weight set (a second group first has a bit: 1 = the first group's set), base
-///   weight ÷ 100 if computed, then its IDs: one if computed, else one per weight, ascending.
-///   Per ID: axis count, then per axis a tag (one past the table: 5 raw bytes follow) and a value
-///   (0: the usual one, the weight for wght, zeros for a raw tag; 1–15: other values; 16: 4 raw
-///   bytes). 15 axes marks a whole ID: its length after the seed, then runs of a zero count, a
-///   literal count and the literals (8 bits each), masked like any other. A computed ID ends with
-///   a bit, 1 if the weight float is its wght value, else the float's offset follows (8 bits).
+/// An ID is a seed byte, then Google's description of the file XOR the seed's mask row. The catalogue
+/// keeps each family's seed and the fields that differ; the reader rebuilds the description and XORs.
+/// Families are found by a short hash of the name. Built by `scripts/catalog.sh`; the byte layout is
+/// in `scripts/catalog-format.md`.
 struct GoogleFontsCatalog: Sendable {
     /// Mapped on first use. Nil once a year old: Google keeps serving old versions, so it would pin them.
     static let bundled: GoogleFontsCatalog? = shipped().flatMap { $0.isCurrent(at: .now) ? $0 : nil }
@@ -361,8 +332,7 @@ private struct Decoder {
     private static let files = Array((CSS2.files.absoluteString + "/").utf8)
     private static let base64url = Array("ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_".utf8)
 
-    /// `<files>/<folder>/v<version>/<the ID as unpadded base64url>.ttf`, the folder being the name lowercased
-    /// with its spaces dropped. Nil for a name with anything but ASCII letters, digits and spaces (no Google name has).
+    /// The file's URL; nil for a name with anything but ASCII letters, digits and spaces (no Google name has).
     private static func url(name: [UInt8], version: Int, id: [UInt8]) -> URL? {
         var text: [UInt8] = []
         text.reserveCapacity(files.count + name.count + 8 + (id.count * 4 + 2) / 3 + 4)
