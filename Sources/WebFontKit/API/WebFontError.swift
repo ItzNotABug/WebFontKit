@@ -1,6 +1,6 @@
 import Foundation
 
-/// Why a font could not be loaded. A cancelled `load` has no entry for the styles it did not finish.
+/// Why a font could not be loaded. A cancelled `load` returns no results.
 ///
 /// ```swift
 /// switch await WebFonts.shared.load("Lobstr")[.regular] {

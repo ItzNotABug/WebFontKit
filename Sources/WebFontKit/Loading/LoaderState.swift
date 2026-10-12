@@ -52,6 +52,8 @@ struct CallState: Sendable {
     var keys: [StyleKey]
     var continuation: CheckedContinuation<CallResult, Never>?
     var cancelled = false
+    /// Errors of its styles whose jobs failed and were dropped.
+    var failures: [FontStyle: WebFontError] = [:]
 }
 
 /// The closing events a starting call owes; they belong to the work, not the call's task.
@@ -126,21 +128,25 @@ struct LoaderState: Sendable {
     /// Resumes every waiting call whose styles have all settled, starts each fetch
     /// whose waiters have all parked, and drops jobs nobody waits on.
     mutating func advance(_ effects: inout Effects) {
+        // A failed job is dropped at once, so no later call joins it and the next one retries.
+        for (key, job) in jobs {
+            guard case .failed(let error) = job.stage else { continue }
+            for waiter in job.waiters { calls[waiter]?.failures[key.style] = error }
+            jobs[key] = nil
+        }
+
         for (id, call) in calls where call.continuation != nil {
             var faces: [StyleKey: ValidatedFace] = [:]
-            var failures: [FontStyle: WebFontError] = [:]
+            var failures = call.failures
             var pending = false
-            for key in call.keys {
+            for key in call.keys where failures[key.style] == nil {
                 switch jobs[key]?.stage {
-                case .failed(let error)?: failures[key.style] = error
                 case .validated(let face)?: faces[key] = face
                 case nil: failures[key.style] = .notFound
                 default: pending = true
                 }
             }
             guard !pending else { continue }
-            // Stays a waiter of its validated styles until it commits them.
-            for key in call.keys where failures[key.style] != nil { jobs[key]?.waiters.remove(id) }
             effects.resumes.append((call.continuation!, .settled(faces: faces, failures: failures)))
             calls[id]?.continuation = nil
         }
@@ -187,13 +193,17 @@ struct LoaderState: Sendable {
         }
     }
 
-    /// For a cancelled starter: once each style has committed or failed.
+    /// For a cancelled starter: once each style has committed or failed, or once any is abandoned.
     mutating func settleCloses(_ effects: inout Effects) {
         for (id, close) in closes where close.starterCancelled {
             if close.abandoned {
-                // Every caller abandoned it: nothing is sent.
+                // Abandoned by every caller: only failures already known are sent.
+                let failed = close.styles.filter { close.failures[$0] != nil }
+                let events = PendingClose.events(family: close.family, asked: failed, failures: close.failures)
+                effects.closes.append((close, events))
             } else if close.keys.allSatisfy({ close.committed.contains($0) || close.failures[$0.style] != nil }) {
-                effects.closes.append((close, PendingClose.events(family: close.family, asked: close.styles, failures: close.failures)))
+                let events = PendingClose.events(family: close.family, asked: close.styles, failures: close.failures)
+                effects.closes.append((close, events))
             } else {
                 continue
             }

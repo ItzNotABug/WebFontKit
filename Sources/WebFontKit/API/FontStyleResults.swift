@@ -13,7 +13,7 @@ public struct FontStyleResults: Sequence, Sendable {
     public typealias Element = (style: FontStyle, result: Result<Void, WebFontError>)
 
     private let entries: [Element]
-    /// Distinct styles asked for; one that did not finish has no entry.
+    /// Distinct styles asked for; a cancelled load has no entries.
     private let expected: Int
 
     init(_ entries: [Element], expected: Int) {
@@ -58,7 +58,7 @@ public struct FontStyleResults: Sequence, Sendable {
         entries.makeIterator()
     }
 
-    /// The result for one style, or nil if it was not asked for or did not finish.
+    /// The result for one style, or nil if it was not asked for or the load was cancelled.
     ///
     /// ```swift
     /// if case .failure(.notFound)? = results[.bold] { print("no bold face") }

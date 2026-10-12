@@ -20,7 +20,7 @@ public enum WebFontEvent: Sendable, Equatable {
     /// ```
     case loaded(family: String, styles: [FontStyle])
 
-    /// The load failed with `error`.
+    /// These styles failed with `error`; a load closes with `.loaded` for the rest and one `.failed` per error.
     ///
     /// ```swift
     /// case .failed(let family, _, let error): print("\(family): \(error)")

@@ -225,6 +225,20 @@ struct ModifierTests {
         #expect(fonts.postScriptName(family: "Lobster", style: .bold) == nil)
     }
 
+    @Test("a style the family lacks reports the regular face's own failure")
+    func styleFallbackFails() async throws {
+        let harness = Harness()
+        let fonts = harness.makeFonts(source: TestDataSource { font in
+            throw font.style == .regular ? WebFontError.offline : WebFontError.notFound
+        })
+        try await harness.warmUp(fonts)
+        let model = ModifierModel()
+        model.weight = .bold
+        let view = ModifierHarness(fonts: fonts, model: model)
+        #expect(try await view.settledPhases() == [.loading, .failed(.offline)])
+        #expect(!harness.logSink.entries.contains { $0.message.contains("drawing its regular face") })
+    }
+
     @Test("changing only the size never reloads")
     func sizeChange() async throws {
         let harness = Harness()

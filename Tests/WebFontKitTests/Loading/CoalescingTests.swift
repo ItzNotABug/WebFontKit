@@ -127,7 +127,76 @@ struct CoalescingTests {
         harness.server.releaseAll()
     }
 
-    @Test("with the CSS2 answer held, an incomplete call fails while a complete one succeeds", arguments: [true, false])
+    @Test("a style that failed is fetched again by the next call while its sibling still downloads")
+    func failedStyleRetried() async throws {
+        let harness = Harness()
+        let source = GatedSource(error: .offline)
+        let fonts = harness.makeFonts(source: source)
+        try await harness.warmUp(fonts)
+
+        let first = Task { await fonts.load("Lobster", styles: [.regular, .bold]) }
+        try await source.waitForFailedBold(in: fonts)
+        let retry = await fonts.load("Lobster", styles: [.bold])
+        #expect(retry.failed.map(\.error) == [.offline])
+        #expect(source.fetches.elements.filter { $0 == .bold }.count == 2)
+        source.release.open()
+        #expect(await first.value.succeeded == [.regular])
+        #expect(LoaderLifecycleTests.settled(fonts))
+    }
+
+    @Test("a cancelled starter whose other style nobody wants still reports the style that failed")
+    func cancelledStarterReportsFailure() async throws {
+        let harness = Harness()
+        let source = GatedSource(error: .offline)
+        let fonts = harness.makeFonts(source: source)
+        let events = try await harness.warmUp(fonts)
+
+        let starter = Task { await fonts.load("Lobster", styles: [.regular, .bold]) }
+        try await source.waitForFailedBold(in: fonts)
+        starter.cancel()
+        #expect(Array(await starter.value).isEmpty)
+        try await events.wait { $0.count >= 3 }
+        #expect(events.loadEvents == [.loading(family: "Lobster", styles: [.regular, .bold]),
+                                       .failed(family: "Lobster", styles: [.bold], error: .offline)])
+        #expect(LoaderLifecycleTests.settled(fonts))
+    }
+
+    @Test("a cancelled starter closes with .loaded and .failed once a joined call commits its other style")
+    func cancelledStarterPartial() async throws {
+        let harness = Harness()
+        let source = GatedSource(error: .offline)
+        let fonts = harness.makeFonts(source: source)
+        let events = try await harness.warmUp(fonts)
+
+        let joins = harness.joins(on: fonts)
+        let starter = Task { await fonts.load("Lobster", styles: [.regular, .bold]) }
+        try await source.waitForFailedBold(in: fonts)
+        let joined = Task { await fonts.load("Lobster") }
+        try await joins.wait { $0.count == 1 }
+        starter.cancel()
+        _ = await starter.value
+        source.release.open()
+        #expect(await joined.value.allSucceeded)
+        try await events.wait { $0.count >= 4 }
+        #expect(events.loadEvents == [.loading(family: "Lobster", styles: [.regular, .bold]),
+                                       .loaded(family: "Lobster", styles: [.regular]),
+                                       .failed(family: "Lobster", styles: [.bold], error: .offline)])
+        #expect(LoaderLifecycleTests.settled(fonts))
+    }
+
+    @Test("a style asked for twice has one entry")
+    func duplicateStyleOneEntry() async throws {
+        let harness = Harness()
+        harness.server.serveGoogle()
+        let fonts = harness.makeFonts()
+        try await harness.warmUp(fonts)
+
+        let results = await fonts.load("Lobster", styles: [.regular, .regular])
+        #expect(Array(results).map(\.style) == [.regular])
+        #expect(results.allSucceeded)
+    }
+
+    @Test("with the CSS2 answer held, a call missing a style shares the one download with a complete call", arguments: [true, false])
     func incompleteBesideComplete(incompleteFirst: Bool) async throws {
         let harness = Harness()
         harness.server.serveGoogle(holdCSS: true)
@@ -135,23 +204,24 @@ struct CoalescingTests {
         try await harness.warmUp(fonts)
 
         let joins = harness.joins(on: fonts)
-        let incomplete: Task<Void, any Error>
+        let incomplete: Task<FontStyleResults, Never>
         let complete: Task<Void, any Error>
         if incompleteFirst {
-            incomplete = Task { try await fonts.loadOrThrow("Lobster", styles: [.regular, .bold]) }
+            incomplete = Task { await fonts.load("Lobster", styles: [.regular, .bold]) }
             try await harness.server.waitForRequests { harness.isCSS2($0) }
             complete = Task { try await fonts.loadOrThrow("Lobster") }
             try await joins.wait { $0.count == 1 }
         } else {
             complete = Task { try await fonts.loadOrThrow("Lobster") }
             try await harness.server.waitForRequests { harness.isCSS2($0) }
-            incomplete = Task { try await fonts.loadOrThrow("Lobster", styles: [.regular, .bold]) }
+            incomplete = Task { await fonts.load("Lobster", styles: [.regular, .bold]) }
             try await joins.wait { $0.count == 1 }
             try await harness.server.waitForRequests(count: 2) { harness.isCSS2($0) }
         }
         harness.server.releaseAll()
 
-        await #expect(throws: WebFontError.notFound) { try await incomplete.value }
+        let results = await incomplete.value
+        #expect(results.succeeded == [.regular] && results.failed.map(\.error) == [.notFound])
         try await complete.value
         #expect(harness.directory.fileNames().filter { $0.hasSuffix(".wfkfont") }.count == 1)
         #expect(harness.registrar.calls(.register).count == 1)
@@ -286,5 +356,32 @@ struct CoalescingTests {
         try await fonts.loadOrThrow("Lobster")
         #expect(fonts.downloaded.map(\.postScriptName) == ["Lobster-Regular"])
         #expect(harness.directory.fileNames().contains { $0.hasPrefix("Lobster@400n@") && $0.hasSuffix("@v1.wfkfont") })
+    }
+}
+
+/// Regular waits for `release`; every other style fails with `error`. Records each fetch.
+private struct GatedSource: FontSource {
+    let error: WebFontError
+    let release = AsyncLatch()
+    let fetches = AsyncRecorder<FontStyle>()
+
+    func fetch(_ font: FontRequest) async throws -> Data {
+        fetches.append(font.style)
+        guard font.style == .regular else { throw error }
+        try await release.wait()
+        return Fixtures.data(Fixtures.lobster)
+    }
+
+    /// Returns once bold's first fetch has failed and the loader has handled it.
+    func waitForFailedBold(in fonts: WebFonts) async throws {
+        _ = try await fetches.wait { $0.contains(.bold) }
+        while fonts.state.withLock({ state in
+            state.jobs.contains { key, job in
+                guard key.style == .bold, case .fetching = job.stage else { return false }
+                return true
+            }
+        }) {
+            try await Task.sleep(for: .milliseconds(5))
+        }
     }
 }

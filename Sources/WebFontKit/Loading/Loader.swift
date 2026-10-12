@@ -56,12 +56,12 @@ extension WebFonts {
     // MARK: Loading
 
     /// `load`, also returning the removal epochs it recorded (the modifier's style alias needs them).
-    /// Each failed style is in `failures`; it throws only `CancellationError`, when cancelled or overtaken.
+    /// `styles` must be distinct. Each failed style is in `failures`; it throws only
+    /// `CancellationError`, when cancelled or overtaken.
     @concurrent
-    func loadRecordingEpochs(_ family: String, styles: [FontStyle]) async throws -> (epochs: Epochs, failures: [FontStyle: WebFontError]) {
+    func loadRecordingEpochs(_ family: String, styles: [FontStyle])
+        async throws -> (epochs: Epochs, failures: [FontStyle: WebFontError]) {
         let snapshot = beginUse()
-        var seen = Set<FontStyle>()
-        let styles = styles.filter { seen.insert($0).inserted }
         let epochs = registry.epochs(for: family)
         guard !styles.isEmpty else { return (epochs, [:]) }
 
@@ -78,7 +78,8 @@ extension WebFonts {
         guard !needed.isEmpty else { return (epochs, [:]) }
         needed = try await lookUpStore(family, styles: needed, snapshot: snapshot, epochs: epochs)
         guard !needed.isEmpty else { return (epochs, [:]) }
-        let failures = try await fetchAndCommit(family, asked: styles, needed: needed, snapshot: snapshot, epochs: epochs)
+        let failures = try await fetchAndCommit(family, asked: styles, needed: needed,
+                                                snapshot: snapshot, epochs: epochs)
         return (epochs, failures)
     }
 
@@ -372,7 +373,7 @@ extension WebFonts {
             if let orphan {
                 _ = try? files.delete(at: orphan)
             }
-            // Only once its partial is gone, so whoever finds the job still draining can wait for that.
+            // Only once its partial is gone, so `quiesce` in tests never returns before the delete.
             state.withLock { _ = $0.draining.removeValue(forKey: job) }
             perform(effects)
         }
