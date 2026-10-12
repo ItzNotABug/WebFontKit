@@ -1,3 +1,4 @@
+import CryptoKit
 import Foundation
 import Testing
 @testable import WebFontKit
@@ -11,6 +12,25 @@ struct FileNameTests {
         // Worked out by hand (SHA-256 of "Lobster\0" "400\0" "n\0" "Lobster|400|n"), never from the code.
         #expect(StoredFileName.font(family: "Lobster", style: .regular, cacheKey: key, version: "v32")
             == "Lobster@400n@fd1062888b6dea6c@v32.wfkfont")
+    }
+
+    @Test("the key hash is the first 8 bytes of SHA-256 in lowercase hex, for any family, style and key")
+    func keyHashFormat() {
+        let families = ["Lobster", "Noto Sans Kannada", "Été", "a@b/c", "", "日本語", String(repeating: "x", count: 300)]
+        let keys = ["", "k", "Lobster|400|n", "v2 \u{0}?", "🙂"]
+        for family in families {
+            for style in [FontStyle.regular, .bold, .italic, FontStyle(weight: 100), FontStyle(weight: 900, italic: true)] {
+                for key in keys {
+                    var input = Data(family.utf8)
+                    for part in [String(style.weight), style.isItalic ? "i" : "n", key] {
+                        input.append(0)
+                        input.append(contentsOf: part.utf8)
+                    }
+                    let expected = SHA256.hash(data: input).prefix(8).map { String(format: "%02x", $0) }.joined()
+                    #expect(StoredFileName.keyHash(family: family, style: style, cacheKey: key) == expected)
+                }
+            }
+        }
     }
 
     @Test("the family is percent-encoded except ASCII letters and digits")
