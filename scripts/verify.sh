@@ -26,18 +26,13 @@ require_ios_simulator
 require_oldest_simulator
 
 log "Catalogue fixtures match the builder"
-python3 -B - "$WORK" <<'EOF' || fail "stale catalogue fixtures: rebuild them (Tests/Fixtures/SOURCES.md)"
-import json, subprocess, sys
+python3 -B - <<'EOF' || fail "stale catalogue fixtures: rebuild them (Tests/Fixtures/SOURCES.md)"
+import json, sys
 sys.path.insert(0, "scripts")
 import catalog
 rows = json.load(open("Tests/Fixtures/catalog/rows.json"))
 for name, kept in (("sample", rows), ("without-lobster", [row for row in rows if row[0] != "Lobster"])):
-    with open(f"{sys.argv[1]}/{name}.json", "w") as file:
-        json.dump(kept, file)
-    built_path = f"{sys.argv[1]}/{name}.catalog"
-    subprocess.run([sys.executable, "-B", "scripts/catalog.py", "build", "--rows", file.name, built_path],
-                   check=True, stdout=subprocess.DEVNULL)
-    built = open(built_path, "rb").read()
+    built = catalog.build_verified(kept, [])[0]
     committed = open(f"Tests/Fixtures/catalog/{name}.catalog", "rb").read()
     # Bytes 8-11 are the build day.
     if built[:8] + built[12:] != committed[:8] + committed[12:]:

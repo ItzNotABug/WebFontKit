@@ -124,6 +124,10 @@ def parse(rows):
     return families, skipped, sources
 
 
+def xor(first, second):
+    return bytes(left ^ right for left, right in zip(first, second))
+
+
 def weight_offset(group):
     """Where the weight float sits if every ID differs from the first only there, else None."""
     (base_weight, base_id), rest = group[0], group[1:]
@@ -133,8 +137,8 @@ def weight_offset(group):
     for weight, identifier in rest:
         if len(identifier) != len(base_id):
             return None
-        float_diff = bytes(a ^ b for a, b in zip(struct.pack("<f", base_weight), struct.pack("<f", weight)))
-        id_diff = bytes(a ^ b for a, b in zip(base_id, identifier))
+        float_diff = xor(struct.pack("<f", base_weight), struct.pack("<f", weight))
+        id_diff = xor(base_id, identifier)
         hits = [at for at in range(len(base_id) - 3)
                 if id_diff[at:at + 4] == float_diff and not any(id_diff[:at]) and not any(id_diff[at + 4:])]
         if not hits or (offset is not None and hits[0] != offset):
@@ -143,11 +147,7 @@ def weight_offset(group):
     return offset
 
 
-# A file ID is a seed byte, then Google's description of the file XOR the seed's mask row:
-#   00 <ID length - 5> 00 <name length> <name> [10 02] [18 <weight>] [3a 0b 08 <axis tag> 15 <float32>]... 20 00
-# 10 02 marks italic, 18 and a varint a static weight other than 400, and each 13-byte block an axis.
-# The catalogue keeps each family's seed and the fields that differ, plus one mask row per seed; the
-# reader rebuilds the description and XORs. An ID that doesn't fit is kept whole.
+# The format is documented in Sources/WebFontKit/Network/GoogleFontsCatalog.swift.
 WGHT = bytes([0xF4, 0xD0, 0x9D, 0xBB, 0x07])     # the axis tag "wght" as Google's varint
 WHOLE = 15                                        # axis count that marks an ID kept whole
 CODES = ("layout", "version", "weights", "axis weights", "base", "axes", "variable axes", "tag", "value")
@@ -224,6 +224,14 @@ def most(counter):
     return max(sorted(counter), key=lambda value: counter[value])
 
 
+def unmasked(file, mask, start, length):
+    """The ID's bytes at start, unmasked, or None while the mask doesn't cover them all."""
+    positions = range(start, start + length)
+    if all((file.id[0], position) in mask for position in positions):
+        return bytes(file.id[position] ^ mask[(file.id[0], position)] for position in positions)
+    return None
+
+
 def learn_masks(ids):
     """(seed, position) -> mask byte: from every byte whose plain value is known, then axis tags, then the rest."""
     votes = collections.defaultdict(collections.Counter)
@@ -237,14 +245,8 @@ def learn_masks(ids):
                 votes[(file.id[0], position)][file.id[position] ^ text[position - 1]] += 1
     mask = {key: most(counter) for key, counter in votes.items()}
 
-    def plain(file, start, length):
-        positions = range(start, start + length)
-        if all((file.id[0], position) in mask for position in positions):
-            return bytes(file.id[position] ^ mask[(file.id[0], position)] for position in positions)
-        return None
-
     # Axis tags read in full teach the rest: a partly known tag that fits only one of them, else the most common.
-    read_tags = (plain(file, start + 3, 5) for file in ids for start in file.starts or [])
+    read_tags = (unmasked(file, mask, start + 3, 5) for file in ids for start in file.starts or [])
     tag_counts = collections.Counter(tag for tag in read_tags if tag)
     tags, common_tag = sorted(tag_counts), most(tag_counts) if tag_counts else WGHT
     for file in ids:
@@ -260,13 +262,13 @@ def learn_masks(ids):
     values = collections.defaultdict(collections.Counter)
     for file in ids:
         for start in file.starts or []:
-            if (tag := plain(file, start + 3, 5)) and (value := plain(file, start + 9, 4)):
+            if (tag := unmasked(file, mask, start + 3, 5)) and (value := unmasked(file, mask, start + 9, 4)):
                 values[tag][value] += 1
     for file in ids:
         for start in file.starts or []:
             for index, position in enumerate(range(start + 3, start + 8)):
                 mask.setdefault((file.id[0], position), file.id[position] ^ common_tag[index])
-            tag = plain(file, start + 3, 5)
+            tag = unmasked(file, mask, start + 3, 5)
             if tag == WGHT:
                 guess = struct.pack("<f", float(file.style.weight))
             else:
@@ -390,8 +392,8 @@ def split_fields(ids, mask):
 
 
 def expected_value(tag, style, usual):
-    """The value an axis gets unless it says otherwise: the weight for wght, else the tag's usual value."""
-    return struct.pack("<f", float(style.weight)) if tag == WGHT else usual.get(tag, bytes(4))
+    """The value an axis gets unless it says otherwise: the weight for a listed wght, else the usual value or zeros."""
+    return struct.pack("<f", float(style.weight)) if tag == WGHT and tag in usual else usual.get(tag, bytes(4))
 
 
 @dataclasses.dataclass
@@ -490,7 +492,7 @@ def record(version, groups, tables):
     return out
 
 
-def build(families, avoid=()):
+def build(families, avoid):
     """The format-2 file. Names in avoid (families left to CSS2) never share a stored family's hash."""
     names = sorted(families, key=lambda family: family.encode())
     if not names:
@@ -538,13 +540,14 @@ def build(families, avoid=()):
     row_lengths = collections.Counter()
     for seed, position in mask:
         row_lengths[seed] = max(row_lengths[seed], position)
-    row_offsets, mask_rows = bytearray(), bytearray()
-    for seed in range(256):
-        row_offsets += struct.pack("<H", len(mask_rows))
-        mask_rows += bytes(mask.get((seed, position), 0) for position in range(1, row_lengths[seed] + 1))
-    row_offsets += struct.pack("<H", len(mask_rows))
-    if len(mask_rows) > 0xFFFF:
+    rows = [bytes(mask.get((seed, position), 0) for position in range(1, row_lengths[seed] + 1)) for seed in range(256)]
+    if sum(map(len, rows)) > 0xFFFF:
         sys.exit("The mask rows outgrew format 2.")
+    row_offsets, mask_rows = bytearray(), bytearray()
+    for row in rows:
+        row_offsets += struct.pack("<H", len(mask_rows))
+        mask_rows += row
+    row_offsets += struct.pack("<H", len(mask_rows))
     tag_table, value_table = bytearray([len(tables.tags)]), bytearray()
     for tag in tables.tags:
         flags = int(tag == WGHT) | len(tables.others[tag]) << 4
@@ -674,7 +677,9 @@ class Catalogue:
                 if name is None:
                     continue
                 row = self.row_offsets + 2 * seed
-                start, end = struct.unpack_from("<HH", self.data, row) if row + 4 <= self.mask_rows else (0, -1)
+                if row + 4 > self.mask_rows:
+                    raise ValueError("A mask row shorter than its ID.")
+                start, end = struct.unpack_from("<HH", self.data, row)
                 if len(plain) - 1 > end - start or self.mask_rows + end > self.index:
                     raise ValueError("A mask row shorter than its ID.")
                 identifier = bytes([seed]) + bytes(plain[position] ^ self.data[self.mask_rows + start + position - 1]
@@ -686,7 +691,7 @@ class Catalogue:
                     raise ValueError("A computed group with no weight offset.")
                 # Any other weight differs only in the little-endian Float32 of the weight.
                 for other in present:
-                    diff = bytes(a ^ b for a, b in zip(struct.pack("<f", float(base)), struct.pack("<f", float(other))))
+                    diff = xor(struct.pack("<f", float(base)), struct.pack("<f", float(other)))
                     other_id = bytearray(identifier)
                     for position in range(4):
                         other_id[offset + position] ^= diff[position]
@@ -715,8 +720,10 @@ class Catalogue:
             tag = entry[:5] if entry else bytes(reader.get(8) for _ in range(5))
             value_index = self.symbol("value", reader)
             from_weight = entry is not None and entry[5] & 1
-            if value_index == 0:
-                value = struct.pack("<f", float(style.weight)) if from_weight else entry[6:10] if entry else bytes(4)
+            if value_index == 0 and from_weight:
+                value = struct.pack("<f", float(style.weight))
+            elif value_index == 0:
+                value = entry[6:10] if entry else bytes(4)
             elif value_index == 16:
                 value = bytes(reader.get(8) for _ in range(4))
             elif entry is not None and value_index - 1 < entry[5] >> 4:
@@ -791,13 +798,13 @@ def committed():
         with open(LISTING, encoding="utf-8") as file:
             text = file.read()
         contents = read(data, [line.split("\t")[0] for line in text.splitlines() if line])
-        if listing(contents) != text:
+        if listing(contents) != text or len(contents) != Catalogue(data).count:
             raise ValueError("the listing doesn't match the catalogue")
         return data, contents
     except FileNotFoundError:
         return b"", {}
     except (ValueError, IndexError, struct.error, UnicodeDecodeError) as error:
-        print(f"The committed catalogue is unreadable ({error}); building a new one from scratch.", file=sys.stderr)
+        print(f"The committed catalogue is unreadable: {error}.", file=sys.stderr)
         return b"", {}
 
 
@@ -822,7 +829,8 @@ def command_build(arguments):
     old = {}
     if arguments.rows:
         with open(arguments.rows) as file:
-            rows, kept, unanswered = json.load(file), [], []
+            rows = json.load(file)
+        kept, unanswered = [], []
     else:
         rows, unanswered = fetch_rows()
         old = committed()[1]
@@ -894,12 +902,18 @@ def command_reckon(arguments):
 
     # The library trusts a catalogue for a year from its build day, so rebuild an unchanged one early.
     age = today() - struct.unpack_from("<I", old_data, 8)[0] if old_data else 0
-    changed = old != new or age > REFRESH_AFTER_DAYS
+    # A family newly left to CSS2 can share a committed family's hash; the fresh build's seed avoids it.
+    strays = sorted(read(old_data, sorted((skipped | set(unanswered)) - old.keys()))) if old_data else []
+    changed = old != new or strays or age > REFRESH_AFTER_DAYS
     refresh = changed and not problems
     if refresh:
         write_bundled(data, new)
-        lines.append("Refreshed the catalogue." if old != new
-                     else f"Refreshed the catalogue's build day: it was {age} days old.")
+        if old != new:
+            lines.append("Refreshed the catalogue.")
+        elif strays:
+            lines.append(f"Refreshed the hash seed: {', '.join(strays)} would read a stored family's files.")
+        else:
+            lines.append(f"Refreshed the catalogue's build day: it was {age} days old.")
     else:
         lines.append("Not refreshed: fix the problems first." if problems else "No refresh.")
     summary = "\n".join(lines) + "\n"
