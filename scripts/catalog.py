@@ -95,7 +95,9 @@ def parse(rows):
     for name, style, url in rows:
         match = URL.match(url)
         weight = int(style.rstrip("i"))
-        if not match or match.group(1) != slug(name) or weight % 100 or not 100 <= weight <= 900:
+        if weight > 900:
+            continue    # FontStyle stops at 900: the library never asks for it
+        if not match or match.group(1) != slug(name) or weight % 100 or weight < 100:
             skipped.add(name)
             continue
         try:
@@ -741,12 +743,13 @@ def read(data, names):
             for name, (version, files) in Catalogue(data).read(names).items()}
 
 
-def reads(data, name):
-    """Whether the catalogue gives name files. A record that can't be rebuilt for it is a miss, as in Swift."""
+def shares_hash(data, name):
+    """Whether name's hash meets a stored family's. Reading raises only past a match, when some style of the
+    record can't be rebuilt for name; Swift may still answer the others."""
     try:
         return bool(read(data, [name]))
     except ValueError:
-        return False
+        return True
 
 
 def listing(contents):
@@ -909,7 +912,8 @@ def command_reckon(arguments):
     # The library trusts a catalogue for a year from its build day, so rebuild an unchanged one early.
     age = today() - struct.unpack_from("<I", old_data, 8)[0] if old_data else 0
     # A family newly left to CSS2 can share a committed family's hash; the fresh build's seed avoids it.
-    strays = [name for name in sorted((skipped | set(unanswered)) - old.keys()) if old_data and reads(old_data, name)]
+    left_to_css2 = sorted((skipped | set(unanswered)) - old.keys())
+    strays = [name for name in left_to_css2 if old_data and shares_hash(old_data, name)]
     changed = old != new or strays or age > REFRESH_AFTER_DAYS
     refresh = changed and not problems
     if refresh:
