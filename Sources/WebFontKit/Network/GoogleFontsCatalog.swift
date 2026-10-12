@@ -1,19 +1,20 @@
 import Foundation
 
 /// Google's file ID for every family and style, so a first load can skip the CSS2 lookup.
-/// Memory-mapped and read in place; anything malformed reads as a miss.
+/// Memory-mapped and read in place. Damaged data never traps: a lookup misses or, at worst, gives a URL
+/// that 404s, and the loader then asks CSS2.
 ///
 /// An ID is a seed byte, then Google's description XOR the seed's mask row:
 /// `00 <ID length − 5> 00 <name length> <name> [10 02] [18 <weight>] [3a 0b 08 <tag> 15 <float32>]… 20 00`
 /// (italic, a static weight other than 400 as a varint, one block per axis). Records keep the
 /// fields that differ; the reader rebuilds the description and XORs.
 ///
-/// Names are found by the top hash bits of FNV-1a (basis `0x811C9DC5` XOR the hash seed). An
+/// Names are found by the top hash bits of 32-bit FNV-1a (basis `0x811C9DC5` XOR the hash seed). An
 /// unknown name matches a family ~0.2% of the time: its URL 404s and the loader asks CSS2.
 ///
 /// Built by `scripts/catalog.sh`. Little-endian, sections in this order:
-/// - header: `WFKC`, format 2, hash bits, block size, Rice parameter, build day (u32), hash seed
-///   (u16), family count (u16), the ten section offsets (u32)
+/// - header: `WFKC`, format 2, hash bits, block size, Rice parameter, build day (u32, days since
+///   1970), hash seed (u16), family count (u16), then the offsets (u32) of the ten sections below
 /// - layouts: count, then per layout bit 4 (a second group) and each group's flags in bits 2–3
 ///   and 0–1 (1 italic, 2 computed: one stored ID gives every weight)
 /// - weight sets: count, then u16s, bit n for weight n × 100
@@ -21,16 +22,21 @@ import Foundation
 /// - axis tags: count, then per tag its 5 bytes, flags (bit 0 wght, bits 4–7 other-value count),
 ///   usual value (4 bytes), first other-value index
 /// - other values: 4 bytes each
-/// - codes: nine u16 offsets past themselves, then per code (canonical Huffman) its counts per
-///   length 1–8 and symbols
-/// - mask rows: 257 u16 offsets, then the rows
-/// - block index: per block, first name hash and records bit offset (u24 each)
-/// - records, MSB-first: per block the Rice-coded hash gaps, then per family seed (8 bits),
-///   layout, version, and per group: weight set (a second group first has a bit: 1 = same set),
-///   base weight ÷ 100 if computed, then its IDs. Per ID: axis count, then per axis a tag (one past
-///   the table: 5 raw bytes follow) and a value (0 usual or the weight, 1–15 other values, 16: 4
-///   raw bytes). 15 axes marks a whole ID: length, then runs of zero count, literal count,
-///   literals. A computed ID ends with a bit (1 = weight float in its wght axis) or the float's u8 offset.
+/// - codes: nine u16 offsets past themselves, then per code its canonical Huffman table: counts
+///   per length 1–8, then symbols. In order: layout, version, weights, axis weights (a computed
+///   group's set), base, axes, variable axes (a computed ID's count), tag, value
+/// - row offsets: 257 u16s into the mask rows (row n ends where n + 1 starts)
+/// - mask rows: row byte i masks ID byte i + 1
+/// - block index: per block, its first name hash and its bit offset into the records (u24 each)
+/// - records, MSB-first: per block the gaps between sorted name hashes (Rice: ones ended by a 0,
+///   then the Rice parameter's bits), then per family its seed (8 bits), layout, version, and per
+///   group: a weight set (a second group first has a bit: 1 = the first group's set), base
+///   weight ÷ 100 if computed, then its IDs: one if computed, else one per weight, ascending.
+///   Per ID: axis count, then per axis a tag (one past the table: 5 raw bytes follow) and a value
+///   (0: the usual one, the weight for wght, zeros for a raw tag; 1–15: other values; 16: 4 raw
+///   bytes). 15 axes marks a whole ID: its length after the seed, then runs of a zero count, a
+///   literal count and the literals (8 bits each), masked like any other. A computed ID ends with
+///   a bit, 1 if the weight float is its wght value, else the float's offset follows (8 bits).
 struct GoogleFontsCatalog: Sendable {
     /// Mapped on first use. Nil once a year old: Google keeps serving old versions, so it would pin them.
     static let bundled: GoogleFontsCatalog? = shipped().flatMap { $0.isCurrent(at: .now) ? $0 : nil }
@@ -96,7 +102,7 @@ private struct Header: Sendable {
         (codes, rows, masks, index, records) =
             (Self.u32(bytes, 36), Self.u32(bytes, 40), Self.u32(bytes, 44), Self.u32(bytes, 48), Self.u32(bytes, 52))
         // Sections in order and inside the file.
-        guard (1...24).contains(hashBits), blockSize > 0, rice < 24, 56 <= layouts, layouts <= weightSets,
+        guard (1...24).contains(hashBits), rice < 24, 56 <= layouts, layouts <= weightSets,
               weightSets <= versions, versions <= tags, tags <= values, values <= codes, codes + 18 <= rows,
               rows <= masks, masks <= index, index <= records, records <= bytes.count
         else { return nil }
@@ -143,7 +149,8 @@ private struct Decoder {
         guard families > 0 else { return nil }
         var bits = Bits(bytes: bytes, at: 8 * header.records + u24(header.index + 6 * low + 3))
         // Read every gap, finding the name's place; leaves the bits at the block's first record.
-        var current = u24(header.index + 6 * low), position = current == nameHash ? 0 : -1
+        var current = u24(header.index + 6 * low)
+        var position: Int? = current == nameHash ? 0 : nil
         for familyIndex in 1..<families {
             // Unary quotient, counted a word at a time.
             var ones = 0
@@ -157,10 +164,10 @@ private struct Decoder {
             bits.at += 1
             current += ones << header.rice | bits.read(header.rice)
             if current == nameHash { position = familyIndex }
-            if current > nameHash, position < 0 { return nil }   // sorted: it isn't here
+            if current > nameHash, position == nil { return nil }   // sorted: it isn't here
         }
-        guard position >= 0 else { return nil }
-        var urls: [FontStyle: URL] = [:]
+        guard let position else { return nil }
+        var urls = [FontStyle: URL](minimumCapacity: styles.count)
         for _ in 0..<position {
             guard family(&bits, name: nil, styles: [], into: &urls) else { return nil }
         }
@@ -206,7 +213,7 @@ private struct Decoder {
                 weights = u16(header.weightSets + 1 + 2 * set)
             }
             if computed {
-                let wanted = styles.contains { $0.isItalic == italic && weights >> ($0.weight / 100) & 1 == 1 }
+                let wanted = styles.contains { $0.isItalic == italic }
                 var weightOffset: Int?
                 guard let base = symbol(.base, &bits), let axes = symbol(.variableAxes, &bits),
                       id(&bits, into: &text, weightOffset: &weightOffset, seed: seed, name: wanted ? name : nil,
@@ -219,8 +226,7 @@ private struct Decoder {
                     guard let offset, offset + 4 <= text.count else { return false }
                     let diff = Float(base * 100).bitPattern ^ Float(style.weight).bitPattern
                     Self.flip(&text, at: offset, by: diff)
-                    guard let url = Self.url(name: name, version: version, id: text) else { return false }
-                    urls[style] = url
+                    guard Self.add(style, name: name, version: version, id: text, to: &urls) else { return false }
                     Self.flip(&text, at: offset, by: diff)
                 }
             } else {
@@ -233,8 +239,7 @@ private struct Decoder {
                              axes: axes)
                     else { return false }
                     if let style, let name {
-                        guard let url = Self.url(name: name, version: version, id: text) else { return false }
-                        urls[style] = url
+                        guard Self.add(style, name: name, version: version, id: text, to: &urls) else { return false }
                     }
                 }
             }
@@ -255,8 +260,9 @@ private struct Decoder {
             }
             var read = 0
             while read < length {
+                // A valid record ends inside the file; a damaged count stops here.
+                guard bits.at <= 8 * bytes.count else { return false }
                 let zeros = bits.read(8), literals = bits.read(8)
-                guard zeros + literals > 0 else { return false }
                 if build { text.append(contentsOf: repeatElement(0, count: zeros)) }
                 for _ in 0..<literals {
                     let value = bits.read(8)
@@ -290,6 +296,7 @@ private struct Decoder {
             }
             let tagCount = byte(header.tags)
             for _ in 0..<axes {
+                guard bits.at <= 8 * bytes.count else { return false }
                 // Unlisted tags and values follow their symbol raw.
                 guard let tagIndex = symbol(.tag, &bits), tagIndex <= tagCount else { return false }
                 let entry = header.tags + 1 + 11 * tagIndex
@@ -343,6 +350,14 @@ private struct Decoder {
         for position in 0..<4 { text[offset + position] ^= UInt8(truncatingIfNeeded: diff >> (8 * position)) }
     }
 
+    /// Builds the style's URL into `urls`; false for a name Google's URLs can't hold.
+    private static func add(_ style: FontStyle, name: [UInt8], version: Int, id: [UInt8],
+                            to urls: inout [FontStyle: URL]) -> Bool {
+        guard let url = url(name: name, version: version, id: id) else { return false }
+        urls[style] = url
+        return true
+    }
+
     private static let files = Array((CSS2.files.absoluteString + "/").utf8)
     private static let base64url = Array("ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_".utf8)
 
@@ -390,7 +405,9 @@ private struct Bits {
         if first >= 0, first + 8 <= bytes.count {
             window = bytes.loadUnaligned(fromByteOffset: first, as: UInt64.self).bigEndian
         } else {
-            for at in first..<first + 8 { window = window << 8 | UInt64(at >= 0 && at < bytes.count ? bytes[at] : 0) }
+            for index in first..<first + 8 {
+                window = window << 8 | UInt64(index >= 0 && index < bytes.count ? bytes[index] : 0)
+            }
         }
         return UInt32(truncatingIfNeeded: (window << UInt64(at & 7)) >> UInt64(64 - count))
     }
