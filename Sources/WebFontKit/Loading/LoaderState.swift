@@ -63,11 +63,10 @@ struct PendingClose: Sendable {
     var epochs: Epochs
     /// Keys not yet settled.
     var keys: Set<StyleKey>
-    /// The styles it fetched; if every one is abandoned, nothing is sent.
+    /// The styles it waits on; if every one is abandoned, nothing is sent.
     let needed: Set<FontStyle>
     var starterCancelled = false
     var failures: [FontStyle: WebFontError] = [:]
-    /// Never reported.
     var abandoned: Set<FontStyle> = []
 
     /// `.loaded` for the styles that made it, then one `.failed` per error, in the order asked.

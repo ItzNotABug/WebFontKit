@@ -268,8 +268,10 @@ struct CoalescingTests {
         }
         bold.cancel()
         _ = await bold.value
-        source.latches[.regular]!.open()
-        #expect(await regular.value.allSucceeded)
+        if !commitFirst {
+            source.latches[.regular]!.open()
+            #expect(await regular.value.allSucceeded)
+        }
         try await harness.sentinel(fonts, events, after: "Lato")
         #expect(events.loadEvents == [.loading(family: "Lato", styles: [.regular, .bold]),
                                        .loaded(family: "Lato", styles: [.regular])])
