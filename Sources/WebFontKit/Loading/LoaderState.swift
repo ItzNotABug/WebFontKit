@@ -32,11 +32,6 @@ struct StyleJob: Sendable {
     var commit: Task<CommitOutcome, Never>?
     /// Set when the commit finishes; the last waiter to leave after that drops the job.
     var outcome: CommitOutcome?
-
-    var isResolving: Bool {
-        if case .resolving = stage { return true }
-        return false
-    }
 }
 
 /// How one style's commit ended.
@@ -46,10 +41,9 @@ enum CommitOutcome: Sendable, Equatable {
     case failed(WebFontError)
 }
 
-/// What a parked call is resumed with.
+/// What a parked call is resumed with once every style it waits on has settled.
 enum CallResult: Sendable {
-    case ready([StyleKey: ValidatedFace])
-    case failed(WebFontError)
+    case settled(faces: [StyleKey: ValidatedFace], failures: [FontStyle: WebFontError])
     case cancelled
 }
 
@@ -58,18 +52,34 @@ struct CallState: Sendable {
     var keys: [StyleKey]
     var continuation: CheckedContinuation<CallResult, Never>?
     var cancelled = false
+    /// Errors of its styles whose jobs failed and were dropped.
+    var failures: [FontStyle: WebFontError] = [:]
 }
 
-/// The closing event a starting call owes; it belongs to the work, not the call's task.
+/// The closing events a starting call owes; they belong to the work, not the call's task.
 struct PendingClose: Sendable {
     var family: String
     var styles: [FontStyle]
     var epochs: Epochs
     var keys: Set<StyleKey>
     var starterCancelled = false
-    var failure: WebFontError?
+    var failures: [FontStyle: WebFontError] = [:]
     var abandoned = false
     var committed: Set<StyleKey> = []
+
+    /// `.loaded` for the styles that made it, then one `.failed` per error, in the order asked.
+    static func events(family: String, asked: [FontStyle], failures: [FontStyle: WebFontError]) -> [WebFontEvent] {
+        var events: [WebFontEvent] = []
+        let loaded = asked.filter { failures[$0] == nil }
+        if !loaded.isEmpty { events.append(.loaded(family: family, styles: loaded)) }
+        var seen: [WebFontError] = []
+        for style in asked {
+            guard let error = failures[style], !seen.contains(error) else { continue }
+            seen.append(error)
+            events.append(.failed(family: family, styles: asked.filter { failures[$0] == error }, error: error))
+        }
+        return events
+    }
 }
 
 /// Side effects decided under the lock and performed after it.
@@ -78,7 +88,7 @@ struct Effects: Sendable {
     var start: [(key: StyleKey, url: URL, fromCatalog: Bool, job: UUID, snapshot: Snapshot)] = []
     var cancel: [Task<Void, Never>] = []
     var deletes: [URL] = []
-    var closes: [(PendingClose, WebFontEvent)] = []
+    var closes: [(PendingClose, [WebFontEvent])] = []
 }
 
 /// Every load in flight: shared jobs, waiting calls, and the closing events they owe.
@@ -95,7 +105,7 @@ struct LoaderState: Sendable {
     var resolves: [UUID: (task: Task<Void, Never>?, keys: [StyleKey])] = [:]
     var calls: [UUID: CallState] = [:]
     var closes: [UUID: PendingClose] = [:]
-    /// Tasks of abandoned jobs that are still running, by job; their partials are deleted when they end.
+    /// Tasks of abandoned jobs that are still running, by job; each leaves once its partial is deleted.
     var draining: [UUID: (key: StyleKey, task: Task<Void, Never>)] = [:]
 
     func familiesInFlight() -> Set<String> {
@@ -109,45 +119,43 @@ struct LoaderState: Sendable {
     }
 
     mutating func recordFailure(_ key: StyleKey, _ error: WebFontError) {
-        for id in closes.keys where closes[id]!.keys.contains(key) && closes[id]!.failure == nil {
-            closes[id]!.failure = error
+        // The key leaves the close, so a retry under the same key isn't credited to it.
+        for id in closes.keys where closes[id]!.keys.contains(key) {
+            closes[id]!.failures[key.style] = error
+            closes[id]!.keys.remove(key)
         }
     }
 
-    /// Decides every waiting call whose styles have all been settled, starts each
-    /// fetch whose waiters have all decided, and drops jobs nobody waits on.
+    /// Resumes every waiting call whose styles have all settled, starts each fetch
+    /// whose waiters have all parked, and drops jobs nobody waits on.
     mutating func advance(_ effects: inout Effects) {
+        // A failed job is dropped at once, so no later call joins it and the next one retries.
+        for (key, job) in jobs {
+            guard case .failed(let error) = job.stage else { continue }
+            for waiter in job.waiters { calls[waiter]?.failures[key.style] = error }
+            jobs[key] = nil
+        }
+
         for (id, call) in calls where call.continuation != nil {
             var faces: [StyleKey: ValidatedFace] = [:]
-            var failure: WebFontError?
+            var failures = call.failures
             var pending = false
-            for key in call.keys {
+            for key in call.keys where failures[key.style] == nil {
                 switch jobs[key]?.stage {
-                case .failed(let error)?: failure = failure ?? error
                 case .validated(let face)?: faces[key] = face
-                case nil: failure = failure ?? .notFound
+                case nil: failures[key.style] = .notFound
                 default: pending = true
                 }
             }
-            if let failure {
-                withdraw(id)
-                effects.resumes.append((call.continuation!, .failed(failure)))
-                calls[id]?.continuation = nil
-            } else if !pending {
-                effects.resumes.append((call.continuation!, .ready(faces)))
-                calls[id]?.continuation = nil
-            }
+            guard !pending else { continue }
+            effects.resumes.append((call.continuation!, .settled(faces: faces, failures: failures)))
+            calls[id]?.continuation = nil
         }
 
         for (key, job) in jobs {
             guard case .ready(let url, let fromCatalog) = job.stage, !job.waiters.isEmpty else { continue }
-            // Every waiter has parked and none waits on a resolve: a call about to fail on another
-            // style (and so withdraw) has failed first, and no font file is requested for it.
-            let decided = job.waiters.allSatisfy { waiter in
-                guard let call = calls[waiter], call.continuation != nil else { return false }
-                return call.keys.allSatisfy { jobs[$0]?.isResolving != true }
-            }
-            if decided {
+            // A call cancelled before parking withdraws as it parks, so no file is requested for it.
+            if job.waiters.allSatisfy({ calls[$0]?.continuation != nil }) {
                 jobs[key]?.stage = .fetching
                 effects.start.append((key, url, fromCatalog, job.id, job.snapshot))
             }
@@ -186,18 +194,14 @@ struct LoaderState: Sendable {
         }
     }
 
-    /// For a cancelled starter, the first thing to happen to its styles decides.
+    /// For a cancelled starter: once each remaining style has committed, or once any is abandoned.
     mutating func settleCloses(_ effects: inout Effects) {
         for (id, close) in closes where close.starterCancelled {
-            if let failure = close.failure {
-                effects.closes.append((close, .failed(family: close.family, styles: close.styles, error: failure)))
-            } else if close.abandoned {
-                // Every caller abandoned it: nothing is sent.
-            } else if close.keys.isSubset(of: close.committed) {
-                effects.closes.append((close, .loaded(family: close.family, styles: close.styles)))
-            } else {
-                continue
-            }
+            guard close.abandoned || close.keys.isSubset(of: close.committed) else { continue }
+            // Abandoned by every caller: only failures already known are sent.
+            let styles = close.abandoned ? close.styles.filter { close.failures[$0] != nil } : close.styles
+            let events = PendingClose.events(family: close.family, asked: styles, failures: close.failures)
+            effects.closes.append((close, events))
             closes[id] = nil
         }
     }

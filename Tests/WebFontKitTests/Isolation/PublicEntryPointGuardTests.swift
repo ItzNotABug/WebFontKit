@@ -15,7 +15,7 @@ struct PublicEntryPointGuardTests {
         let fonts = harness.makeFonts()
 
         fonts.configure(WebFonts.Configuration(session: harness.session))
-        try await fonts.load("Inter", styles: [.regular, .bold])
+        try await fonts.loadOrThrow("Inter", styles: [.regular, .bold])
         await fonts.load(["Lobster", "Inter"])
         try await fonts.remove("Inter")
         try await fonts.removeAll()
@@ -31,7 +31,7 @@ struct PublicEntryPointGuardTests {
         let harness = Harness()
         harness.server.serveGoogle()
         let fonts = harness.makeFonts()
-        let loads = Task.detached { try await fonts.load("Lobster") }
+        let loads = Task.detached { try await fonts.loadOrThrow("Lobster") }
         await withTaskGroup(of: Void.self) { group in
             for _ in 0..<8 {
                 group.addTask {

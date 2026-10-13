@@ -14,7 +14,7 @@ struct CatalogLoadTests {
         let fonts = harness.makeFonts(catalog: GoogleFontsCatalogTests.catalog)
         try await harness.warmUp(fonts)
 
-        try await fonts.load("Lobster")
+        try await fonts.loadOrThrow("Lobster")
 
         #expect(harness.css2Requests == 0)
         #expect(harness.server.requests.map(\.url.absoluteString) == [Self.lobsterURL])
@@ -29,7 +29,7 @@ struct CatalogLoadTests {
         let fonts = harness.makeFonts(catalog: GoogleFontsCatalogTests.catalog)
         try await harness.warmUp(fonts)
 
-        try await fonts.load("Lobster")
+        try await fonts.loadOrThrow("Lobster")
 
         #expect(harness.css2Requests == 1)
         #expect(fonts.postScriptName(family: "Lobster", style: .regular) == "Lobster-Regular")
@@ -46,9 +46,9 @@ struct CatalogLoadTests {
         let fonts = harness.makeFonts(catalog: GoogleFontsCatalogTests.catalog)
         try await harness.warmUp(fonts)
 
-        _ = try? await fonts.load("Lato", styles: [.regular])
+        _ = try? await fonts.loadOrThrow("Lato", styles: [.regular])
         let lookups = harness.css2Requests
-        _ = try? await fonts.load("Lato", styles: [.bold])
+        _ = try? await fonts.loadOrThrow("Lato", styles: [.bold])
 
         #expect(harness.css2Requests == lookups + 1, "bold was looked up")
         #expect(!harness.server.requests.contains { $0.url == latoBold }, "bold's catalogued URL was never tried")
@@ -64,9 +64,11 @@ struct CatalogLoadTests {
         let fonts = harness.makeFonts(catalog: GoogleFontsCatalogTests.catalog)
         try await harness.warmUp(fonts)
 
-        await #expect(throws: WebFontError.server(statusCode: 503)) { try await fonts.load("Lato", styles: [.regular]) }
+        await #expect(throws: WebFontError.server(statusCode: 503)) {
+            try await fonts.loadOrThrow("Lato", styles: [.regular])
+        }
         #expect(harness.css2Requests == 0)
-        _ = try? await fonts.load("Lato", styles: [.bold])
+        _ = try? await fonts.loadOrThrow("Lato", styles: [.bold])
 
         #expect(harness.server.requests.contains { $0.url == latoBold }, "bold still came from the catalogue")
     }
@@ -80,10 +82,10 @@ struct CatalogLoadTests {
         harness.server.serveGoogle()
         let fonts = harness.makeFonts(catalog: GoogleFontsCatalogTests.catalog)
         try await harness.warmUp(fonts)
-        _ = try? await fonts.load("Lato", styles: [.regular])
+        _ = try? await fonts.loadOrThrow("Lato", styles: [.regular])
 
         fonts.configure(WebFonts.Configuration(directory: harness.directory.url, session: harness.session))
-        _ = try? await fonts.load("Lato", styles: [.bold])
+        _ = try? await fonts.loadOrThrow("Lato", styles: [.bold])
 
         #expect(harness.server.requests.contains { $0.url == latoBold })
     }
@@ -100,12 +102,12 @@ struct CatalogLoadTests {
         let fonts = harness.makeFonts(catalog: GoogleFontsCatalogTests.catalog)
         try await harness.warmUp(fonts)
 
-        let old = Task { try? await fonts.load("Lato", styles: [.regular]) }
+        let old = Task { try? await fonts.loadOrThrow("Lato", styles: [.regular]) }
         _ = try await harness.server.waitForRequests { $0 == latoRegular }
         fonts.configure(WebFonts.Configuration(directory: harness.directory.url, session: harness.session))
         harness.server.release(latoRegular.absoluteString)
         _ = await old.value
-        _ = try? await fonts.load("Lato", styles: [.bold])
+        _ = try? await fonts.loadOrThrow("Lato", styles: [.bold])
 
         #expect(harness.server.requests.contains { $0.url == latoBold })
     }
@@ -123,7 +125,7 @@ struct CatalogLoadTests {
         try await harness.warmUp(fonts)
         #expect(reads.withLock { $0 } == 0)
 
-        try await fonts.load("Lobster")
+        try await fonts.loadOrThrow("Lobster")
         #expect(reads.withLock { $0 } == 1)
     }
 
@@ -134,9 +136,10 @@ struct CatalogLoadTests {
         let fonts = harness.makeFonts(catalog: GoogleFontsCatalogTests.catalog)
         try await harness.warmUp(fonts)
 
-        await #expect(throws: WebFontError.notFound) { try await fonts.load("Lobster", styles: [.regular, .bold]) }
+        let results = await fonts.load("Lobster", styles: [.regular, .bold])
+        #expect(results.succeeded == [.regular] && results.failed.map(\.error) == [.notFound])
         #expect(harness.css2Requests == 1)
-        #expect(harness.fileRequests == 0)
+        #expect(harness.fileRequests == 1)
     }
 
     @Test("a family the catalogue doesn't know is looked up as usual")
@@ -147,7 +150,7 @@ struct CatalogLoadTests {
         let fonts = harness.makeFonts(catalog: withoutLobster)
         try await harness.warmUp(fonts)
 
-        try await fonts.load("Lobster")
+        try await fonts.loadOrThrow("Lobster")
 
         #expect(harness.css2Requests == 1)
         #expect(fonts.postScriptName(family: "Lobster", style: .regular) == "Lobster-Regular")

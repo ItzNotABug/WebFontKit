@@ -62,7 +62,7 @@ Text("Hello").font(web: "Pacifico", size: 28) { phase in
 Load first, then use Apple's APIs:
 
 ```swift
-try await WebFonts.shared.load("Inter", styles: [.regular, .bold])
+await WebFonts.shared.load("Inter", styles: [.regular, .bold])
 label.font = UIFont(name: "Inter", size: 17)
 ```
 
