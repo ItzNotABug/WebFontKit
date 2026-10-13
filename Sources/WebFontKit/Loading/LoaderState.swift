@@ -161,6 +161,8 @@ struct LoaderState: Sendable {
             }
         }
 
+        // A job whose commit has finished is done once its last waiter leaves, cancelled or not.
+        for (key, job) in jobs where job.waiters.isEmpty && job.outcome != nil { jobs[key] = nil }
         for (key, job) in jobs where job.waiters.isEmpty && job.commit == nil {
             switch job.stage {
             case .fetching:
@@ -198,8 +200,9 @@ struct LoaderState: Sendable {
     mutating func settleCloses(_ effects: inout Effects) {
         for (id, close) in closes where close.starterCancelled {
             guard close.abandoned || close.keys.isSubset(of: close.committed) else { continue }
-            // Abandoned by every caller: only failures already known are sent.
-            let styles = close.abandoned ? close.styles.filter { close.failures[$0] != nil } : close.styles
+            // Abandoned by every caller: only the styles already settled are sent.
+            let settled = close.committed.map(\.style) + Array(close.failures.keys)
+            let styles = close.abandoned ? close.styles.filter(settled.contains) : close.styles
             let events = PendingClose.events(family: close.family, asked: styles, failures: close.failures)
             effects.closes.append((close, events))
             closes[id] = nil

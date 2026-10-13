@@ -220,10 +220,55 @@ struct CoalescingTests {
 
         let results = await fonts.load("Lobster", styles: [.regular, .bold])
         #expect(results.succeeded == [.regular] && results.failed.map(\.style) == [.bold])
-        try await events.wait { $0.count >= 5 }
+        try await harness.sentinel(fonts, events, after: "Lobster")
         #expect(events.loadEvents.suffix(3) == [.loading(family: "Lobster", styles: [.regular, .bold]),
                                                  .loaded(family: "Lobster", styles: [.regular]),
                                                  .failed(family: "Lobster", styles: [.bold], error: .notFound)])
+    }
+
+    @Test("a shared style's job is dropped when its last waiter is cancelled after the commit")
+    func committedJobDroppedOnCancel() async throws {
+        let harness = Harness()
+        let source = HeldLatoSource()
+        let fonts = harness.makeFonts(source: source)
+        try await harness.warmUp(fonts)
+
+        let joins = harness.joins(on: fonts)
+        let wide = Task { await fonts.load("Lato", styles: [.regular, .bold]) }
+        _ = try await source.fetches.wait { $0.count == 2 }
+        let narrow = Task { await fonts.load("Lato") }
+        try await joins.wait { $0.count == 1 }
+        source.latches[.regular]!.open()
+        #expect(await narrow.value.allSucceeded)
+        wide.cancel()
+        _ = await wide.value
+        await fonts.quiesce(family: "Lato")
+        #expect(LoaderLifecycleTests.settled(fonts))
+    }
+
+    @Test("an abandoned close still reports a style another caller committed")
+    func abandonedCloseReportsCommitted() async throws {
+        let harness = Harness()
+        let source = HeldLatoSource()
+        let fonts = harness.makeFonts(source: source)
+        let events = try await harness.warmUp(fonts)
+
+        let joins = harness.joins(on: fonts)
+        let starter = Task { await fonts.load("Lato", styles: [.regular, .bold]) }
+        _ = try await source.fetches.wait { $0.count == 2 }
+        let regular = Task { await fonts.load("Lato") }
+        let bold = Task { await fonts.load("Lato", styles: [.bold]) }
+        try await joins.wait { $0.count == 2 }
+        starter.cancel()
+        _ = await starter.value
+        source.latches[.regular]!.open()
+        #expect(await regular.value.allSucceeded)
+        bold.cancel()
+        _ = await bold.value
+        try await harness.sentinel(fonts, events, after: "Lato")
+        #expect(events.loadEvents == [.loading(family: "Lato", styles: [.regular, .bold]),
+                                       .loaded(family: "Lato", styles: [.regular])])
+        #expect(LoaderLifecycleTests.settled(fonts))
     }
 
     @Test("a style asked for twice has one entry")
@@ -423,5 +468,17 @@ private struct GatedSource: FontSource {
         while fonts.state.withLock({ $0.jobs.keys.contains { $0.style == .bold } }) {
             try await Task.sleep(for: .milliseconds(5))
         }
+    }
+}
+
+/// Each style waits for its own latch, then returns its Lato face.
+private struct HeldLatoSource: FontSource {
+    let latches: [FontStyle: AsyncLatch] = [.regular: AsyncLatch(), .bold: AsyncLatch()]
+    let fetches = AsyncRecorder<FontStyle>()
+
+    func fetch(_ font: FontRequest) async throws -> Data {
+        fetches.append(font.style)
+        try await latches[font.style]!.wait()
+        return Fixtures.data(font.style == .bold ? Fixtures.latoBold : Fixtures.latoRegular)
     }
 }
