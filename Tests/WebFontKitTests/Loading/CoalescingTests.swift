@@ -246,8 +246,9 @@ struct CoalescingTests {
         #expect(LoaderLifecycleTests.settled(fonts))
     }
 
-    @Test("an abandoned close still reports a style another caller committed")
-    func abandonedCloseReportsCommitted() async throws {
+    @Test("a cancelled starter still reports a style another caller committed, before or after the rest is abandoned",
+          arguments: [true, false])
+    func abandonedCloseReportsCommitted(commitFirst: Bool) async throws {
         let harness = Harness()
         let source = HeldLatoSource()
         let fonts = harness.makeFonts(source: source)
@@ -261,13 +262,66 @@ struct CoalescingTests {
         try await joins.wait { $0.count == 2 }
         starter.cancel()
         _ = await starter.value
-        source.latches[.regular]!.open()
-        #expect(await regular.value.allSucceeded)
+        if commitFirst {
+            source.latches[.regular]!.open()
+            #expect(await regular.value.allSucceeded)
+        }
         bold.cancel()
         _ = await bold.value
+        source.latches[.regular]!.open()
+        #expect(await regular.value.allSucceeded)
         try await harness.sentinel(fonts, events, after: "Lato")
         #expect(events.loadEvents == [.loading(family: "Lato", styles: [.regular, .bold]),
                                        .loaded(family: "Lato", styles: [.regular])])
+        #expect(LoaderLifecycleTests.settled(fonts))
+    }
+
+    @Test("a cancelled starter that joined a style whose commit already failed still closes")
+    func joinedFinishedCommitCloses() async throws {
+        let harness = Harness()
+        let source = HeldLatoSource()
+        let fonts = harness.makeFonts(source: source)
+        let events = try await harness.warmUp(fonts)
+
+        let joins = harness.joins(on: fonts)
+        let first = Task { await fonts.load("Lato") }
+        try await events.wait { $0.contains(.loading(family: "Lato", styles: [.regular])) }
+        // Keeps the regular job alive after its commit: this call still waits on bold.
+        let holder = Task { await fonts.load("Lato", styles: [.bold, .regular]) }
+        try await joins.wait { $0.count == 1 }
+        harness.files.fail(.rename, times: 1)
+        source.latches[.regular]!.open()
+        #expect(await first.value.failed.map(\.error) == [.storage])
+
+        let starter = Task { await fonts.load("Lato", styles: [.regular, .italic]) }
+        _ = try await source.fetches.wait { $0.contains(.italic) }
+        try await joins.wait { $0.count == 2 }
+        starter.cancel()
+        _ = await starter.value
+        source.latches[.bold]!.open()
+        _ = await holder.value
+        try await harness.sentinel(fonts, events, after: "Lato")
+        // The first call, the holder and the cancelled starter each close with it.
+        let regularFailed = WebFontEvent.failed(family: "Lato", styles: [.regular], error: .storage)
+        #expect(events.loadEvents.filter { $0 == regularFailed }.count == 3)
+        #expect(LoaderLifecycleTests.settled(fonts))
+    }
+
+    @Test("a cancelled starter whose fetched styles were all abandoned sends no close, even beside a loaded style")
+    func abandonedStarterSendsNothing() async throws {
+        let harness = Harness()
+        let source = HeldLatoSource()
+        let fonts = harness.makeFonts(source: source)
+        let events = try await harness.warmUp(fonts)
+        source.latches[.regular]!.open()
+        try await fonts.loadOrThrow("Lato")
+
+        let starter = Task { await fonts.load("Lato", styles: [.regular, .bold]) }
+        _ = try await source.fetches.wait { $0.contains(.bold) }
+        starter.cancel()
+        _ = await starter.value
+        try await harness.sentinel(fonts, events, after: "Lato")
+        #expect(events.loadEvents.suffix(1) == [.loading(family: "Lato", styles: [.regular, .bold])])
         #expect(LoaderLifecycleTests.settled(fonts))
     }
 
@@ -473,12 +527,13 @@ private struct GatedSource: FontSource {
 
 /// Each style waits for its own latch, then returns its Lato face.
 private struct HeldLatoSource: FontSource {
-    let latches: [FontStyle: AsyncLatch] = [.regular: AsyncLatch(), .bold: AsyncLatch()]
+    let latches: [FontStyle: AsyncLatch] = [.regular: AsyncLatch(), .bold: AsyncLatch(), .italic: AsyncLatch()]
     let fetches = AsyncRecorder<FontStyle>()
 
     func fetch(_ font: FontRequest) async throws -> Data {
         fetches.append(font.style)
         try await latches[font.style]!.wait()
-        return Fixtures.data(font.style == .bold ? Fixtures.latoBold : Fixtures.latoRegular)
+        let faces = [FontStyle.regular: Fixtures.latoRegular, .bold: Fixtures.latoBold, .italic: Fixtures.latoItalic]
+        return Fixtures.data(faces[font.style]!)
     }
 }
