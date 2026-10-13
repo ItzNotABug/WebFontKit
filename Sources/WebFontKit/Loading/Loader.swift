@@ -100,7 +100,12 @@ extension WebFonts {
             state.calls[call] = CallState(keys: keys)
             let joined = toStart.count < keys.count
             guard !toStart.isEmpty else { return ([], nil, joined) }
-            state.closes[call] = PendingClose(family: family, styles: asked, epochs: epochs, keys: Set(keys))
+            state.closes[call] = PendingClose(family: family, styles: asked, epochs: epochs,
+                                              keys: Set(keys), needed: Set(needed))
+            // A joined job whose commit already ended won't settle its key again.
+            for key in keys {
+                if let outcome = state.jobs[key]?.outcome { state.settle(key, outcome) }
+            }
             var resolve: (UUID, [StyleKey])?
             if snapshot.usesDefaultSource {
                 let id = UUID()
@@ -416,15 +421,7 @@ extension WebFonts {
             }
         }
         let effects = state.withLock { state -> Effects in
-            if case .failed(let error) = outcome { state.recordFailure(key, error) }
-            for id in state.closes.keys where state.closes[id]!.keys.contains(key) {
-                switch outcome {
-                case .added: state.closes[id]!.committed.insert(key)
-                case .failed: break
-                // `remove` overtook it: no closing event is owed.
-                case .overtaken: state.closes[id]!.abandoned = true
-                }
-            }
+            state.settle(key, outcome)
             // Dropped now if nobody waits; otherwise by the last waiter to leave.
             if state.jobs[key]?.waiters.isEmpty == true {
                 state.jobs[key] = nil

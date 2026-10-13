@@ -61,11 +61,13 @@ struct PendingClose: Sendable {
     var family: String
     var styles: [FontStyle]
     var epochs: Epochs
+    /// Keys not yet settled.
     var keys: Set<StyleKey>
+    /// The styles it waits on; if every one is abandoned, nothing is sent.
+    let needed: Set<FontStyle>
     var starterCancelled = false
     var failures: [FontStyle: WebFontError] = [:]
-    var abandoned = false
-    var committed: Set<StyleKey> = []
+    var abandoned: Set<FontStyle> = []
 
     /// `.loaded` for the styles that made it, then one `.failed` per error, in the order asked.
     static func events(family: String, asked: [FontStyle], failures: [FontStyle: WebFontError]) -> [WebFontEvent] {
@@ -118,11 +120,25 @@ struct LoaderState: Sendable {
         }
     }
 
+    // A settled key leaves its closes, so a later job under that key isn't credited to them.
     mutating func recordFailure(_ key: StyleKey, _ error: WebFontError) {
-        // The key leaves the close, so a retry under the same key isn't credited to it.
-        for id in closes.keys where closes[id]!.keys.contains(key) {
+        for id in closes.keys where closes[id]!.keys.remove(key) != nil {
             closes[id]!.failures[key.style] = error
-            closes[id]!.keys.remove(key)
+        }
+    }
+
+    mutating func settle(_ key: StyleKey, _ outcome: CommitOutcome) {
+        switch outcome {
+        case .added: for id in closes.keys { closes[id]!.keys.remove(key) }
+        case .failed(let error): recordFailure(key, error)
+        // `remove` overtook it: no closing event is owed.
+        case .overtaken: markAbandoned(key)
+        }
+    }
+
+    mutating func markAbandoned(_ key: StyleKey) {
+        for id in closes.keys where closes[id]!.keys.remove(key) != nil {
+            closes[id]!.abandoned.insert(key.style)
         }
     }
 
@@ -190,21 +206,14 @@ struct LoaderState: Sendable {
         settleCloses(&effects)
     }
 
-    private mutating func markAbandoned(_ key: StyleKey) {
-        for id in closes.keys where closes[id]!.keys.contains(key) {
-            closes[id]!.abandoned = true
-        }
-    }
-
-    /// For a cancelled starter: once each remaining style has committed, or once any is abandoned.
+    /// For a cancelled starter: once every key has settled. Abandoned styles aren't reported.
     mutating func settleCloses(_ effects: inout Effects) {
-        for (id, close) in closes where close.starterCancelled {
-            guard close.abandoned || close.keys.isSubset(of: close.committed) else { continue }
-            // Abandoned by every caller: only the styles already settled are sent.
-            let settled = close.committed.map(\.style) + Array(close.failures.keys)
-            let styles = close.abandoned ? close.styles.filter(settled.contains) : close.styles
-            let events = PendingClose.events(family: close.family, asked: styles, failures: close.failures)
-            effects.closes.append((close, events))
+        for (id, close) in closes where close.starterCancelled && close.keys.isEmpty {
+            if !close.abandoned.isSuperset(of: close.needed) {
+                let styles = close.styles.filter { !close.abandoned.contains($0) }
+                let events = PendingClose.events(family: close.family, asked: styles, failures: close.failures)
+                effects.closes.append((close, events))
+            }
             closes[id] = nil
         }
     }
