@@ -56,8 +56,7 @@ extension WebFonts {
     // MARK: Loading
 
     /// `load`, also returning the removal epochs it recorded (the modifier's style alias needs them).
-    /// `styles` must be distinct. Each failed style is in `failures`; it throws only
-    /// `CancellationError`, when cancelled or overtaken.
+    /// `styles` must be distinct; throws only `CancellationError`, when cancelled or overtaken.
     @concurrent
     func loadRecordingEpochs(_ family: String, styles: [FontStyle])
         async throws -> (epochs: Epochs, failures: [FontStyle: WebFontError]) {

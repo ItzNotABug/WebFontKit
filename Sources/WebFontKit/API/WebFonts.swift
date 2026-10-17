@@ -139,10 +139,8 @@ public final class WebFonts: Sendable {
         }
     }
 
-    /// Loads one family's styles: from memory, from disk, or from the source. Never throws:
-    /// each style loads or fails on its own, and its outcome is in the results, in the order asked.
-    /// A cancelled load, or one `remove` overtakes, returns no results. A failed style isn't kept:
-    /// the next `load` fetches it again; WebFontKit never retries on its own.
+    /// Loads one family's styles, each on its own; never throws. A cancelled load returns no results,
+    /// and a failed style is fetched again by the next `load`, never automatically.
     ///
     /// ```swift
     /// let results = await WebFonts.shared.load("Inter", styles: [.regular, .bold])

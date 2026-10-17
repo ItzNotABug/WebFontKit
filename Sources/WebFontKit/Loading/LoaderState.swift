@@ -148,8 +148,7 @@ struct LoaderState: Sendable {
         }
     }
 
-    /// Resumes every waiting call whose styles have all settled, starts each fetch
-    /// whose waiters have all parked, and drops jobs nobody waits on.
+    /// Resumes settled calls, starts fetches whose waiters have parked, drops unwanted jobs.
     mutating func advance(_ effects: inout Effects) {
         for (key, job) in jobs {
             if case .failed(let error) = job.stage { dropFailed(key, error) }
