@@ -350,7 +350,7 @@ struct CoalescingTests {
         // Keeps the regular job alive after its commit: this call still waits on bold.
         let holder = Task { await fonts.load("Lato", styles: [.bold, .regular]) }
         try await joins.wait { $0.count == 1 }
-        // The starter's store check waits until regular has committed, then finds nothing, so it joins.
+        // Its store check runs after regular commits and finds nothing, so it joins.
         let listing = harness.files.hold(.contentsOfDirectory)
         harness.files.fail(.contentsOfDirectory, times: 1)
         defer { listing.release() }
@@ -589,7 +589,7 @@ private struct GatedSource: FontSource {
     }
 }
 
-/// Each style's first fetch waits for its own latch, a later one for `retry`; then it returns its Lato face.
+/// A style's first fetch waits on its latch, later ones on `retry`; each returns its Lato face.
 private struct HeldLatoSource: FontSource {
     let latches: [FontStyle: AsyncLatch] = [.regular: AsyncLatch(), .bold: AsyncLatch(), .italic: AsyncLatch()]
     let retry = AsyncLatch()

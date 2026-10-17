@@ -120,8 +120,7 @@ struct LoaderState: Sendable {
         }
     }
 
-    /// Drops a failed job at once, leaving its error with each waiter, so no later call joins it
-    /// and the next one retries.
+    /// Drops a failed job, leaving its error with its waiters, so the next call retries.
     mutating func dropFailed(_ key: StyleKey, _ error: WebFontError) {
         for waiter in jobs[key]?.waiters ?? [] { calls[waiter]?.failures[key.style] = error }
         jobs[key] = nil
