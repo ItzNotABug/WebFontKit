@@ -181,15 +181,17 @@ extension WebFonts {
                     state.jobs[key] = job
                     return (job.commit, nil)
                 }
-                var outcome = finished
-                if outcome == nil {
+                let outcome: CommitOutcome
+                if let finished {
+                    outcome = finished
+                } else {
                     // Never nil: the call is still a waiter, so its job is there.
                     outcome = await commit?.value ?? .overtaken
                 }
                 switch outcome {
-                case .failed(let error)?: failures[key.style] = error
-                case .overtaken?: overtaken = true
-                case .added?, nil: break
+                case .failed(let error): failures[key.style] = error
+                case .overtaken: overtaken = true
+                case .added: break
                 }
             }
             state.withLock { _ = $0.calls.removeValue(forKey: call) }

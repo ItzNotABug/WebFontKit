@@ -21,7 +21,7 @@ bundled font.
 ## Installation
 
 ```swift
-.package(url: "https://github.com/ItzNotABug/WebFontKit.git", from: "1.1.0")
+.package(url: "https://github.com/ItzNotABug/WebFontKit.git", from: "2.0.0")
 ```
 
 In Xcode: **File › Add Package Dependencies…**, paste the URL, and add the `WebFontKit` product.

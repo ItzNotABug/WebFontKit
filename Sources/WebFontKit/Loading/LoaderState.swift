@@ -126,13 +126,13 @@ struct LoaderState: Sendable {
         jobs[key] = nil
     }
 
-    // A settled key leaves its closes, so a later job under that key isn't credited to them.
     mutating func recordFailure(_ key: StyleKey, _ error: WebFontError) {
         for id in closes.keys where closes[id]!.keys.remove(key) != nil {
             closes[id]!.failures[key.style] = error
         }
     }
 
+    /// A settled key leaves its closes, so a later job under that key isn't credited to them.
     mutating func settle(_ key: StyleKey, _ outcome: CommitOutcome) {
         switch outcome {
         case .added: for id in closes.keys { closes[id]!.keys.remove(key) }

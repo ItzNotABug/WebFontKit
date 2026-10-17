@@ -8,7 +8,7 @@ public struct FontStyleResults: Sequence, Sendable {
     /// One style and how its load ended.
     ///
     /// ```swift
-    /// for (style, result) in results where (try? result.get()) == nil { print("missing", style) }
+    /// for (style, result) in results where (try? result.get()) == nil { print("failed", style) }
     /// ```
     public typealias Element = (style: FontStyle, result: Result<Void, WebFontError>)
 
@@ -58,7 +58,7 @@ public struct FontStyleResults: Sequence, Sendable {
         entries.makeIterator()
     }
 
-    /// The result for one style, or nil if it was not asked for or the load was cancelled.
+    /// The result for one style, or nil if it was not asked for or the load was cancelled or overtaken by `remove`.
     ///
     /// ```swift
     /// if case .failure(.notFound)? = results[.bold] { print("no bold face") }
