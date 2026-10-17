@@ -278,7 +278,32 @@ struct CoalescingTests {
         #expect(LoaderLifecycleTests.settled(fonts))
     }
 
-    @Test("a cancelled starter that joined a style whose commit already failed still closes")
+    @Test("a style whose install failed is fetched again by the next call, while another call still waits on it")
+    func failedCommitRetried() async throws {
+        let harness = Harness()
+        let source = HeldLatoSource()
+        let fonts = harness.makeFonts(source: source)
+        let events = try await harness.warmUp(fonts)
+
+        let joins = harness.joins(on: fonts)
+        let first = Task { await fonts.load("Lato") }
+        try await events.wait { $0.contains(.loading(family: "Lato", styles: [.regular])) }
+        // Still waits on regular when its install fails: this call waits on bold too.
+        let holder = Task { await fonts.load("Lato", styles: [.bold, .regular]) }
+        try await joins.wait { $0.count == 1 }
+        harness.files.fail(.rename, times: 1)
+        source.latches[.regular]!.open()
+        #expect(await first.value.failed.map(\.error) == [.storage])
+
+        #expect(await fonts.load("Lato").allSucceeded)
+        #expect(source.fetches.elements.filter { $0 == .regular }.count == 2)
+        source.latches[.bold]!.open()
+        let held = await holder.value
+        #expect(held.succeeded == [.bold] && held.failed.map(\.error) == [.storage])
+        #expect(LoaderLifecycleTests.settled(fonts))
+    }
+
+    @Test("a cancelled starter that joined a style whose install already succeeded still closes")
     func joinedFinishedCommitCloses() async throws {
         let harness = Harness()
         let source = HeldLatoSource()
@@ -291,11 +316,14 @@ struct CoalescingTests {
         // Keeps the regular job alive after its commit: this call still waits on bold.
         let holder = Task { await fonts.load("Lato", styles: [.bold, .regular]) }
         try await joins.wait { $0.count == 1 }
-        harness.files.fail(.rename, times: 1)
-        source.latches[.regular]!.open()
-        #expect(await first.value.failed.map(\.error) == [.storage])
-
+        // The starter's store check waits until regular has committed, then finds nothing, so it joins.
+        let listing = harness.files.hold(.contentsOfDirectory)
+        harness.files.fail(.contentsOfDirectory, times: 1)
         let starter = Task { await fonts.load("Lato", styles: [.regular, .italic]) }
+        try await listing.arrived.wait()
+        source.latches[.regular]!.open()
+        #expect(await first.value.allSucceeded)
+        listing.release()
         _ = try await source.fetches.wait { $0.contains(.italic) }
         try await joins.wait { $0.count == 2 }
         starter.cancel()
@@ -303,9 +331,8 @@ struct CoalescingTests {
         source.latches[.bold]!.open()
         _ = await holder.value
         try await harness.sentinel(fonts, events, after: "Lato")
-        // The first call, the holder and the cancelled starter each close with it.
-        let regularFailed = WebFontEvent.failed(family: "Lato", styles: [.regular], error: .storage)
-        #expect(events.loadEvents.filter { $0 == regularFailed }.count == 3)
+        // The first call and the cancelled starter each close with it.
+        #expect(events.loadEvents.filter { $0 == .loaded(family: "Lato", styles: [.regular]) }.count == 2)
         #expect(LoaderLifecycleTests.settled(fonts))
     }
 

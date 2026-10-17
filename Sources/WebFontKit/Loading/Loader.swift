@@ -166,7 +166,10 @@ extension WebFonts {
             for key in keys {
                 guard let face = faces[key] else { continue }
                 let (commit, finished) = state.withLock { state -> (Task<CommitOutcome, Never>?, CommitOutcome?) in
-                    guard var job = state.jobs[key] else { return (nil, nil) }
+                    // A failed commit dropped the job and left its error with each waiter.
+                    guard var job = state.jobs[key] else {
+                        return (nil, state.calls[call]?.failures[key.style].map { .failed($0) })
+                    }
                     if job.commit == nil {
                         job.commit = Task { [self] in await self.commit(key, face: face, snapshot: snapshot) }
                     }
@@ -422,8 +425,10 @@ extension WebFonts {
         }
         let effects = state.withLock { state -> Effects in
             state.settle(key, outcome)
-            // Dropped now if nobody waits; otherwise by the last waiter to leave.
-            if state.jobs[key]?.waiters.isEmpty == true {
+            // Dropped now if it failed or nobody waits; otherwise by the last waiter to leave.
+            if case .failed(let error) = outcome {
+                state.dropFailed(key, error)
+            } else if state.jobs[key]?.waiters.isEmpty == true {
                 state.jobs[key] = nil
             } else {
                 state.jobs[key]?.outcome = outcome
