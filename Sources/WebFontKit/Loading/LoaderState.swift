@@ -120,6 +120,12 @@ struct LoaderState: Sendable {
         }
     }
 
+    /// Drops a failed job, leaving its error with its waiters, so the next call retries.
+    mutating func dropFailed(_ key: StyleKey, _ error: WebFontError) {
+        for waiter in jobs[key]?.waiters ?? [] { calls[waiter]?.failures[key.style] = error }
+        jobs[key] = nil
+    }
+
     // A settled key leaves its closes, so a later job under that key isn't credited to them.
     mutating func recordFailure(_ key: StyleKey, _ error: WebFontError) {
         for id in closes.keys where closes[id]!.keys.remove(key) != nil {
@@ -145,11 +151,8 @@ struct LoaderState: Sendable {
     /// Resumes every waiting call whose styles have all settled, starts each fetch
     /// whose waiters have all parked, and drops jobs nobody waits on.
     mutating func advance(_ effects: inout Effects) {
-        // A failed job is dropped at once, so no later call joins it and the next one retries.
         for (key, job) in jobs {
-            guard case .failed(let error) = job.stage else { continue }
-            for waiter in job.waiters { calls[waiter]?.failures[key.style] = error }
-            jobs[key] = nil
+            if case .failed(let error) = job.stage { dropFailed(key, error) }
         }
 
         for (id, call) in calls where call.continuation != nil {

@@ -166,6 +166,8 @@ extension WebFonts {
             for key in keys {
                 guard let face = faces[key] else { continue }
                 let (commit, finished) = state.withLock { state -> (Task<CommitOutcome, Never>?, CommitOutcome?) in
+                    // Its commit failed: a job now under this key is a retry's.
+                    if let error = state.calls[call]?.failures[key.style] { return (nil, .failed(error)) }
                     guard var job = state.jobs[key] else { return (nil, nil) }
                     if job.commit == nil {
                         job.commit = Task { [self] in await self.commit(key, face: face, snapshot: snapshot) }
@@ -422,8 +424,10 @@ extension WebFonts {
         }
         let effects = state.withLock { state -> Effects in
             state.settle(key, outcome)
-            // Dropped now if nobody waits; otherwise by the last waiter to leave.
-            if state.jobs[key]?.waiters.isEmpty == true {
+            // Dropped now if it failed or nobody waits; otherwise by the last waiter to leave.
+            if case .failed(let error) = outcome {
+                state.dropFailed(key, error)
+            } else if state.jobs[key]?.waiters.isEmpty == true {
                 state.jobs[key] = nil
             } else {
                 state.jobs[key]?.outcome = outcome

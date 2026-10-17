@@ -26,9 +26,25 @@ public final class FakeFileOperations: FileOperations, Sendable {
         var remaining: Int?
     }
 
+    /// A held call: `arrived` opens once it waits; it goes on after `release()`.
+    public final class Hold: Sendable {
+        public let arrived = AsyncLatch()
+        private let gate = DispatchSemaphore(value: 0)
+
+        public func release() {
+            gate.signal()
+        }
+
+        fileprivate func wait() {
+            arrived.open()
+            gate.wait()
+        }
+    }
+
     private struct State {
         var calls: [Call] = []
         var failures: [Failure] = []
+        var holds: [Operation: Hold] = [:]
     }
 
     private let disk = DiskFileOperations()
@@ -59,7 +75,15 @@ public final class FakeFileOperations: FileOperations, Sendable {
         }
     }
 
+    /// Makes the next `operation` block its thread until the hold is released.
+    public func hold(_ operation: Operation) -> Hold {
+        let hold = Hold()
+        state.withLock { $0.holds[operation] = hold }
+        return hold
+    }
+
     private func record(_ operation: Operation, _ url: URL?, destination: URL? = nil) throws {
+        state.withLock { $0.holds.removeValue(forKey: operation) }?.wait()
         let call = Call(operation: operation, url: url, destination: destination, onMainThread: Thread.isMainThread)
         let error = state.withLock { state -> (any Error)? in
             state.calls.append(call)
