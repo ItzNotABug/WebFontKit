@@ -166,10 +166,10 @@ extension WebFonts {
             for key in keys {
                 guard let face = faces[key] else { continue }
                 let (commit, finished) = state.withLock { state -> (Task<CommitOutcome, Never>?, CommitOutcome?) in
-                    // A failed commit dropped the job and left its error with each waiter.
-                    guard var job = state.jobs[key] else {
-                        return (nil, state.calls[call]?.failures[key.style].map { .failed($0) })
-                    }
+                    // A failed commit dropped the job and left its error here; a job now under
+                    // this key is a retry's, not this call's.
+                    if let error = state.calls[call]?.failures[key.style] { return (nil, .failed(error)) }
+                    guard var job = state.jobs[key] else { return (nil, nil) }
                     if job.commit == nil {
                         job.commit = Task { [self] in await self.commit(key, face: face, snapshot: snapshot) }
                     }

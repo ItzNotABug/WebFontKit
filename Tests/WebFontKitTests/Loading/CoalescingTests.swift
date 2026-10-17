@@ -295,11 +295,45 @@ struct CoalescingTests {
         source.latches[.regular]!.open()
         #expect(await first.value.failed.map(\.error) == [.storage])
 
+        source.retry.open()
         #expect(await fonts.load("Lato").allSucceeded)
         #expect(source.fetches.elements.filter { $0 == .regular }.count == 2)
         source.latches[.bold]!.open()
         let held = await holder.value
         #expect(held.succeeded == [.bold] && held.failed.map(\.error) == [.storage])
+        #expect(LoaderLifecycleTests.settled(fonts))
+    }
+
+    @Test("a call left holding a failed install never takes over the retry's new job")
+    func failedCommitWaiterLeavesRetry() async throws {
+        let harness = Harness()
+        let source = HeldLatoSource()
+        let fonts = harness.makeFonts(source: source)
+        let events = try await harness.warmUp(fonts)
+
+        let joins = harness.joins(on: fonts)
+        let boldOnly = Task { await fonts.load("Lato", styles: [.bold]) }
+        try await events.wait { $0.contains(.loading(family: "Lato", styles: [.bold])) }
+        let first = Task { await fonts.load("Lato") }
+        try await events.wait { $0.contains(.loading(family: "Lato", styles: [.regular])) }
+        // Commits bold before regular, so it reaches regular only after regular's install failed.
+        let late = Task { await fonts.load("Lato", styles: [.bold, .regular]) }
+        try await joins.wait { $0.count == 1 }
+        harness.registrar.holdRegister()
+        source.latches[.bold]!.open()
+        _ = try await harness.registrar.heldRegisterArrivals.wait { $0.count == 1 }
+        harness.files.fail(.rename, times: 1)
+        source.latches[.regular]!.open()
+        #expect(await first.value.failed.map(\.error) == [.storage])
+
+        let retry = Task { await fonts.load("Lato") }
+        _ = try await source.fetches.wait { $0.filter { $0 == .regular }.count == 2 }
+        harness.registrar.releaseRegister()
+        let lateResults = await late.value
+        #expect(lateResults.succeeded == [.bold] && lateResults.failed.map(\.error) == [.storage])
+        source.retry.open()
+        #expect(await retry.value.allSucceeded)
+        #expect(await boldOnly.value.allSucceeded)
         #expect(LoaderLifecycleTests.settled(fonts))
     }
 
@@ -319,6 +353,7 @@ struct CoalescingTests {
         // The starter's store check waits until regular has committed, then finds nothing, so it joins.
         let listing = harness.files.hold(.contentsOfDirectory)
         harness.files.fail(.contentsOfDirectory, times: 1)
+        defer { listing.release() }
         let starter = Task { await fonts.load("Lato", styles: [.regular, .italic]) }
         try await listing.arrived.wait()
         source.latches[.regular]!.open()
@@ -554,14 +589,16 @@ private struct GatedSource: FontSource {
     }
 }
 
-/// Each style waits for its own latch, then returns its Lato face.
+/// Each style's first fetch waits for its own latch, a later one for `retry`; then it returns its Lato face.
 private struct HeldLatoSource: FontSource {
     let latches: [FontStyle: AsyncLatch] = [.regular: AsyncLatch(), .bold: AsyncLatch(), .italic: AsyncLatch()]
+    let retry = AsyncLatch()
     let fetches = AsyncRecorder<FontStyle>()
 
     func fetch(_ font: FontRequest) async throws -> Data {
         fetches.append(font.style)
-        try await latches[font.style]!.wait()
+        let isRetry = fetches.elements.filter { $0 == font.style }.count > 1
+        try await (isRetry ? retry : latches[font.style]!).wait()
         let faces = [FontStyle.regular: Fixtures.latoRegular, .bold: Fixtures.latoBold, .italic: Fixtures.latoItalic]
         return Fixtures.data(faces[font.style]!)
     }
