@@ -139,8 +139,8 @@ public final class WebFonts: Sendable {
         }
     }
 
-    /// Loads one family's styles, each on its own; never throws. A cancelled load returns no results,
-    /// and a failed style is fetched again by the next `load`, never automatically.
+    /// Loads one family's styles, each on its own; never throws. A cancelled or overtaken load returns
+    /// no results, and a failed style is fetched again by the next `load`, never automatically.
     ///
     /// ```swift
     /// let results = await WebFonts.shared.load("Inter", styles: [.regular, .bold])

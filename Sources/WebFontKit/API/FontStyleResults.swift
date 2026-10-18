@@ -58,7 +58,7 @@ public struct FontStyleResults: Sequence, Sendable {
         entries.makeIterator()
     }
 
-    /// The result for one style; nil if it wasn't asked for or the load was cancelled.
+    /// The result for one style; nil if it wasn't asked for or the load was cancelled or overtaken.
     ///
     /// ```swift
     /// if case .failure(.notFound)? = results[.bold] { print("no bold face") }
