@@ -73,6 +73,7 @@ jobs:
           echo "$(sysctl -n machdep.cpu.brand_string), $(sysctl -n hw.ncpu) cores, load $(sysctl -n vm.loadavg)"
           xcode=$(basename "${DEVELOPER_DIR%/Contents/Developer}" .app)
           echo "cache-key=modules-${{ matrix.name }}-$ImageVersion-$xcode" >> "$GITHUB_OUTPUT"
+          touch "$RUNNER_TEMP/before-build"
 
       - name: Restore the module cache
         id: modules
@@ -91,6 +92,12 @@ jobs:
           source scripts/common.sh
           swiftpm_no_warnings test with_timeout 600 swift test --skip WebFontKitPerformanceTests \
             --disable-index-store -Xswiftc -warnings-as-errors ${{ matrix.flags }}
+
+      - name: Module cache use
+        if: always()
+        run: |
+          cache=.build/arm64-apple-macosx/debug/ModuleCache
+          echo "files $(find "$cache" -type f | wc -l), rewritten $(find "$cache" -type f -newer "$RUNNER_TEMP/before-build" | wc -l)"
 
       - name: Save the module cache
         if: steps.modules.outputs.cache-hit != 'true'
