@@ -76,7 +76,7 @@ struct ModifierTests {
         harness.server.serveGoogle()
         let fonts = harness.makeFonts()
         try await harness.warmUp(fonts)
-        try await fonts.load("Lobster")
+        try await fonts.loadOrThrow("Lobster")
 
         let view = ModifierHarness(fonts: fonts)
         #expect(try await view.settledPhases() == [.loaded])
@@ -91,13 +91,13 @@ struct ModifierTests {
         harness.server.serveGoogle()
         let fonts = harness.makeFonts()
         try await harness.warmUp(fonts)
-        try await fonts.load("Lobster")
+        try await fonts.loadOrThrow("Lobster")
         let view = ModifierHarness(fonts: fonts)
         #expect(try await view.settledPhases() == [.loaded])
         view.render()
         let bodies = view.choices.elements.count
 
-        try await fonts.load("Inter", styles: [.regular, .bold])
+        try await fonts.loadOrThrow("Inter", styles: [.regular, .bold])
         view.render()
         #expect(view.choices.elements.count == bodies)
 
@@ -223,6 +223,20 @@ struct ModifierTests {
 
         try await fonts.remove("Lobster")
         #expect(fonts.postScriptName(family: "Lobster", style: .bold) == nil)
+    }
+
+    @Test("a style the family lacks reports the regular face's own failure")
+    func styleFallbackFails() async throws {
+        let harness = Harness()
+        let fonts = harness.makeFonts(source: TestDataSource { font in
+            throw font.style == .regular ? WebFontError.offline : WebFontError.notFound
+        })
+        try await harness.warmUp(fonts)
+        let model = ModifierModel()
+        model.weight = .bold
+        let view = ModifierHarness(fonts: fonts, model: model)
+        #expect(try await view.settledPhases() == [.loading, .failed(.offline)])
+        #expect(!harness.logSink.entries.contains { $0.message.contains("drawing its regular face") })
     }
 
     @Test("changing only the size never reloads")

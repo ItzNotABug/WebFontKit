@@ -56,33 +56,35 @@ extension WebFonts {
     // MARK: Loading
 
     /// `load`, also returning the removal epochs it recorded (the modifier's style alias needs them).
+    /// `styles` must be distinct; throws only `CancellationError`, when cancelled or overtaken.
     @concurrent
-    func loadRecordingEpochs(_ family: String, styles: [FontStyle]) async throws -> Epochs {
+    func loadRecordingEpochs(_ family: String, styles: [FontStyle])
+        async throws -> (epochs: Epochs, failures: [FontStyle: WebFontError]) {
         let snapshot = beginUse()
-        var seen = Set<FontStyle>()
-        let styles = styles.filter { seen.insert($0).inserted }
         let epochs = registry.epochs(for: family)
-        guard !styles.isEmpty else { return epochs }
+        guard !styles.isEmpty else { return (epochs, [:]) }
 
         guard Self.isValidFamilyName(family, defaultSource: snapshot.usesDefaultSource) else {
             log("load", .debug, "Rejected the family name \"\(family)\" before any request")
             hub.emit([.loading(family: family, styles: styles), .failed(family: family, styles: styles, error: .notFound)])
-            throw WebFontError.notFound
+            return (epochs, Dictionary(uniqueKeysWithValues: styles.map { ($0, .notFound) }))
         }
 
         var needed = missing(styles, family: family, snapshot: snapshot)
-        guard !needed.isEmpty else { return epochs }
+        guard !needed.isEmpty else { return (epochs, [:]) }
         await waitForWarmUp()
         needed = missing(needed, family: family, snapshot: snapshot)
-        guard !needed.isEmpty else { return epochs }
+        guard !needed.isEmpty else { return (epochs, [:]) }
         needed = try await lookUpStore(family, styles: needed, snapshot: snapshot, epochs: epochs)
-        guard !needed.isEmpty else { return epochs }
-        try await fetchAndCommit(family, asked: styles, needed: needed, snapshot: snapshot, epochs: epochs)
-        return epochs
+        guard !needed.isEmpty else { return (epochs, [:]) }
+        let failures = try await fetchAndCommit(family, asked: styles, needed: needed,
+                                                snapshot: snapshot, epochs: epochs)
+        return (epochs, failures)
     }
 
+    /// Returns each style that failed; the rest are registered.
     private func fetchAndCommit(_ family: String, asked: [FontStyle], needed: [FontStyle],
-                                snapshot: Snapshot, epochs: Epochs) async throws {
+                                snapshot: Snapshot, epochs: Epochs) async throws -> [FontStyle: WebFontError] {
         let call = UUID()
         let keys = needed.map { StyleKey(sourceID: snapshot.sourceID, family: family, style: $0, epochs: epochs) }
         let (starts, resolve, joined) = state.withLock { state -> ([(StyleKey, UUID)], (UUID, [StyleKey])?, Bool) in
@@ -97,7 +99,12 @@ extension WebFonts {
             state.calls[call] = CallState(keys: keys)
             let joined = toStart.count < keys.count
             guard !toStart.isEmpty else { return ([], nil, joined) }
-            state.closes[call] = PendingClose(family: family, styles: asked, epochs: epochs, keys: Set(keys))
+            state.closes[call] = PendingClose(family: family, styles: asked, epochs: epochs,
+                                              keys: Set(keys), needed: Set(needed))
+            // A joined job whose commit already ended won't settle its key again.
+            for key in keys {
+                if let outcome = state.jobs[key]?.outcome { state.settle(key, outcome) }
+            }
             var resolve: (UUID, [StyleKey])?
             if snapshot.usesDefaultSource {
                 let id = UUID()
@@ -153,19 +160,13 @@ extension WebFonts {
         case .cancelled:
             state.withLock { _ = $0.calls.removeValue(forKey: call) }
             throw CancellationError()
-        case .failed(let error):
-            let draining = state.withLock { state in
-                state.calls[call] = nil
-                return state.draining.values.filter { keys.contains($0.key) }.map(\.task)
-            }
-            for task in draining { await task.value }
-            close(call, with: .failed(family: family, styles: asked, error: error))
-            throw error
-        case .ready(let faces):
-            var outcomes: [CommitOutcome] = []
+        case .settled(let faces, var failures):
+            var overtaken = false
             for key in keys {
                 guard let face = faces[key] else { continue }
                 let (commit, finished) = state.withLock { state -> (Task<CommitOutcome, Never>?, CommitOutcome?) in
+                    // Its commit failed: a job now under this key is a retry's.
+                    if let error = state.calls[call]?.failures[key.style] { return (nil, .failed(error)) }
                     guard var job = state.jobs[key] else { return (nil, nil) }
                     if job.commit == nil {
                         job.commit = Task { [self] in await self.commit(key, face: face, snapshot: snapshot) }
@@ -179,16 +180,22 @@ extension WebFonts {
                     state.jobs[key] = job
                     return (job.commit, nil)
                 }
+                let outcome: CommitOutcome
                 if let finished {
-                    outcomes.append(finished)
+                    outcome = finished
                 } else {
                     // Never nil: the call is still a waiter, so its job is there.
-                    outcomes.append(await commit?.value ?? .overtaken)
+                    outcome = await commit?.value ?? .overtaken
+                }
+                switch outcome {
+                case .failed(let error): failures[key.style] = error
+                case .overtaken: overtaken = true
+                case .added: break
                 }
             }
             state.withLock { _ = $0.calls.removeValue(forKey: call) }
-            if outcomes.contains(.overtaken) {
-                close(call, with: nil)
+            if overtaken {
+                close(call, with: [])
                 throw CancellationError()
             }
             if Task.isCancelled {
@@ -201,18 +208,15 @@ extension WebFonts {
                 perform(effects)
                 throw CancellationError()
             }
-            if let failure = outcomes.lazy.compactMap({ if case .failed(let error) = $0 { error } else { nil } }).first {
-                close(call, with: .failed(family: family, styles: asked, error: failure))
-                throw failure
-            }
-            close(call, with: .loaded(family: family, styles: asked))
+            close(call, with: PendingClose.events(family: family, asked: asked, failures: failures))
+            return failures
         }
     }
 
-    /// The starting call sends its own closing event, unless `remove` overtook it.
-    private func close(_ call: UUID, with event: WebFontEvent?) {
-        guard let close = state.withLock({ $0.closes.removeValue(forKey: call) }), let event else { return }
-        emitIfCurrent(close, event)
+    /// The starting call sends its own closing events, unless `remove` overtook it.
+    private func close(_ call: UUID, with events: [WebFontEvent]) {
+        guard let close = state.withLock({ $0.closes.removeValue(forKey: call) }) else { return }
+        emitIfCurrent(close, events)
     }
 
     /// A parked call withdraws at once; one not yet parked withdraws as it parks.
@@ -234,7 +238,7 @@ extension WebFonts {
 
     /// Runs after unlocking. A cancel can arrive on the main thread, where no file is touched.
     private func perform(_ effects: Effects) {
-        // Deleted before any waiter resumes, so a failed call leaves nothing behind.
+        // Deleted before any waiter resumes.
         if !effects.deletes.isEmpty {
             let files = files
             if !Thread.isMainThread {
@@ -252,15 +256,15 @@ extension WebFonts {
         for start in effects.start {
             startFetch(start.key, url: start.url, fromCatalog: start.fromCatalog, job: start.job, snapshot: start.snapshot)
         }
-        for (close, event) in effects.closes {
-            emitIfCurrent(close, event)
+        for (close, events) in effects.closes {
+            emitIfCurrent(close, events)
         }
     }
 
-    /// A closing event is sent only if `remove` hasn't overtaken the load since it started.
-    private func emitIfCurrent(_ close: PendingClose, _ event: WebFontEvent) {
+    /// Closing events are sent only if `remove` hasn't overtaken the load since it started.
+    private func emitIfCurrent(_ close: PendingClose, _ events: [WebFontEvent]) {
         if registry.epochs(for: close.family) == close.epochs {
-            hub.emit(event)
+            hub.emit(events)
         }
     }
 
@@ -356,7 +360,6 @@ extension WebFonts {
             let (effects, orphan) = state.withLock { state -> (Effects, URL?) in
                 var effects = Effects()
                 var orphan: URL?
-                state.draining[job] = nil
                 // A job abandoned and started again under the same key is a different job.
                 let current = state.jobs[key]?.id == job
                 switch outcome {
@@ -378,6 +381,8 @@ extension WebFonts {
             if let orphan {
                 _ = try? files.delete(at: orphan)
             }
+            // Only once its partial is gone, so `quiesce` in tests never returns before the delete.
+            state.withLock { _ = $0.draining.removeValue(forKey: job) }
             perform(effects)
         }
         let attached = state.withLock { state -> Bool in
@@ -419,16 +424,11 @@ extension WebFonts {
             }
         }
         let effects = state.withLock { state -> Effects in
-            for id in state.closes.keys where state.closes[id]!.keys.contains(key) {
-                switch outcome {
-                case .added: state.closes[id]!.committed.insert(key)
-                case .failed(let error): if state.closes[id]!.failure == nil { state.closes[id]!.failure = error }
-                // `remove` overtook it: no closing event is owed.
-                case .overtaken: state.closes[id]!.abandoned = true
-                }
-            }
-            // Dropped now if nobody waits; otherwise by the last waiter to leave.
-            if state.jobs[key]?.waiters.isEmpty == true {
+            state.settle(key, outcome)
+            // Dropped now if it failed or nobody waits; otherwise by the last waiter to leave.
+            if case .failed(let error) = outcome {
+                state.dropFailed(key, error)
+            } else if state.jobs[key]?.waiters.isEmpty == true {
                 state.jobs[key] = nil
             } else {
                 state.jobs[key]?.outcome = outcome

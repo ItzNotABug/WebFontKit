@@ -31,16 +31,16 @@ Text("Hello").font(web: "Inter", size: 17, weight: .bold) { phase in
 ## Outside a view
 
 ```swift
-try await WebFonts.shared.load("Inter", styles: [.regular, .bold])
+await WebFonts.shared.load("Inter", styles: [.regular, .bold])          // never throws
 label.font = UIFont(name: "Inter", size: 17)
 let results = await WebFonts.shared.load(["Pacifico", "Bebas Neue"])   // never throws
 ```
 
-``WebFonts/events`` reports loads, launch registration (`.warmedUp`) and removals. Each listener keeps the newest 256 events. A `.loading` with no closing `.loaded` or `.failed` means every caller abandoned that load, or ``WebFonts/remove(_:)`` or ``WebFonts/removeAll()`` overtook it before it stored anything.
+``WebFonts/events`` reports loads, launch registration (`.warmedUp`) and removals. Each listener keeps the newest 256 events. A load closes with `.loaded` for the styles that loaded and one `.failed` per error; styles every caller abandoned get no closing event. A `.loading` with no closing `.loaded` or `.failed` means every caller abandoned that load, or ``WebFonts/remove(_:)`` or ``WebFonts/removeAll()`` overtook it before it finished.
 
 ## Errors and cancellation
 
-A `load` throws `CancellationError`, not a ``WebFontError``, when its caller is cancelled or when `remove` or `removeAll` overtakes it before it stores anything, so a removal is never undone by a load in flight. A load that starts after `remove` returns stores normally.
+A `load` never throws: each style's ``WebFontError`` is in its results. A load returns no results when its caller is cancelled or when `remove` or `removeAll` overtakes it before it finishes, so a removal is never undone by a load in flight. A load that starts after `remove` returns stores normally.
 
 ## Housekeeping
 

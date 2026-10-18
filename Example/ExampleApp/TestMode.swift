@@ -50,13 +50,12 @@ enum TestMode {
 
         if let seed {
             Task {
-                do {
-                    try await WebFonts.shared.load(seed)
-                    exit(0)
-                } catch {
-                    FileHandle.standardError.write(Data("seeding \(seed) failed: \(error)\n".utf8))
+                let results = await WebFonts.shared.load(seed)
+                guard results.allSucceeded else {
+                    FileHandle.standardError.write(Data("seeding \(seed) failed: \(results.failed)\n".utf8))
                     exit(1)
                 }
+                exit(0)
             }
             return .seeding
         }

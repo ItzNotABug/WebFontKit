@@ -110,10 +110,10 @@ final class PerformanceTests: XCTestCase {
         server.serveGoogle()
         let fonts = WebFonts(configuration: .init(session: server.makeSession()), registrar: CoreTextRegistrar(),
                              fileOperations: DiskFileOperations(), root: directory.url, logSink: RecordingLogSink())
-        try run { try await fonts.load("Lobster") }
+        try run { try await fonts.loadOrThrow("Lobster") }
         measure(metrics: [XCTClockMetric()]) {
             do {
-                try run { try await fonts.load("Lobster") }
+                try run { try await fonts.loadOrThrow("Lobster") }
             } catch {
                 XCTFail("\(error)")
             }

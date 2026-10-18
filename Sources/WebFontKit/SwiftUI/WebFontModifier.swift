@@ -136,23 +136,28 @@ struct WebFontModifier: ViewModifier {
             return
         }
         onPhase?(.loading)
-        do {
-            try await fonts.load(family, styles: [style])
+        switch await fonts.load(family, styles: [style])[style] {
+        case .success?:
             onPhase?(.loaded)
-        } catch WebFontError.notFound where style != .regular && fonts.acceptsFamilyName(family) {
+        case .failure(.notFound)? where style != .regular && fonts.acceptsFamilyName(family):
             // A missing style; a rejected name has no regular face to fall back to either.
             await drawRegular(fonts: fonts)
-        } catch let error as WebFontError {
+        case .failure(let error)?:
             onPhase?(.failed(error))
-        } catch {
+        case nil:
             // Cancelled, or overtaken by `remove`: the view stays on its fallback.
+            break
         }
     }
 
     /// A style the family lacks draws the regular face plain; iOS synthesises no bold or italic.
     private func drawRegular(fonts: WebFonts) async {
         do {
-            let epochs = try await fonts.loadRecordingEpochs(family, styles: [.regular])
+            let (epochs, failures) = try await fonts.loadRecordingEpochs(family, styles: [.regular])
+            if let error = failures[.regular] {
+                onPhase?(.failed(error))
+                return
+            }
             #if DEBUG
             await fonts.hooks.beforeAlias?()
             #endif
@@ -160,8 +165,6 @@ struct WebFontModifier: ViewModifier {
                 fonts.log("modifier", .info, "\(family) has no \(style.logDescription) face; drawing its regular face")
                 onPhase?(.loaded)
             }
-        } catch let error as WebFontError {
-            onPhase?(.failed(error))
         } catch {
             // Cancelled, or overtaken by `remove`.
         }

@@ -1,14 +1,12 @@
 import Foundation
 
-/// Why a font could not be loaded. A cancelled `load` throws `CancellationError` instead.
+/// Why a font could not be loaded. A cancelled `load` returns no results.
 ///
 /// ```swift
-/// do {
-///     try await WebFonts.shared.load("Lobstr")
-/// } catch WebFontError.notFound {
-///     print("No such family or style")
-/// } catch WebFontError.offline {
-///     print("No network, and nothing on disk")
+/// switch await WebFonts.shared.load("Lobstr")[.regular] {
+/// case .failure(.notFound)?: print("No such family or style")
+/// case .failure(.offline)?: print("No network, and nothing on disk")
+/// default: break
 /// }
 /// ```
 public enum WebFontError: Error, Sendable, Equatable {
@@ -22,28 +20,28 @@ public enum WebFontError: Error, Sendable, Equatable {
     /// There is no network connection, and the font is not on disk.
     ///
     /// ```swift
-    /// catch WebFontError.offline { showOfflineBanner() }
+    /// if case .failure(.offline)? = results[.regular] { showOfflineBanner() }
     /// ```
     case offline
 
     /// Not a usable font: rejected by CoreText, over 64 MiB, or no usable file in the CSS.
     ///
     /// ```swift
-    /// catch WebFontError.invalidFont { report("bad font file") }
+    /// if case .failure(.invalidFont)? = results[.regular] { report("bad font file") }
     /// ```
     case invalidFont
 
     /// Any other network failure, with its `URLError` code, such as a timeout.
     ///
     /// ```swift
-    /// catch WebFontError.network(.timedOut) { retryLater() }
+    /// if case .failure(.network(.timedOut))? = results[.regular] { retryLater() }
     /// ```
     case network(URLError.Code)
 
     /// An HTTP status that is neither success nor "not found", such as 503 or 429.
     ///
     /// ```swift
-    /// catch WebFontError.server(let status) { print("server answered \(status)") }
+    /// if case .failure(.server(let status))? = results[.regular] { print("server answered \(status)") }
     /// ```
     case server(statusCode: Int)
 

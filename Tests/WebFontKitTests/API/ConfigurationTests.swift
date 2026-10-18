@@ -30,8 +30,8 @@ struct ConfigurationTests {
             switch trigger {
             case "events": _ = fonts.events
             case "downloaded": _ = fonts.downloaded
-            case "load": try await fonts.load("Lobster")
-            case "loadEmpty": try await fonts.load("Lobster", styles: [])
+            case "load": try await fonts.loadOrThrow("Lobster")
+            case "loadEmpty": try await fonts.loadOrThrow("Lobster", styles: [])
             case "batch": await fonts.load(["Lobster"])
             case "batchEmpty": await fonts.load([])
             case "remove": try await fonts.remove("Inter")

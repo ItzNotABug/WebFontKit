@@ -45,7 +45,7 @@ extension IntegrationTests {
         @Test("a registered face renders exactly like Font.custom with its PostScript name, and unlike the fallback")
         func matchesPostScriptFace() async throws {
             let fonts = fonts()
-            try await fonts.load("Lobster")
+            try await fonts.loadOrThrow("Lobster")
             let settled = AsyncLatch()
             let web = pixels(image(webText(settled: settled), fonts: fonts))
             #expect(web != nil)
@@ -75,12 +75,12 @@ extension IntegrationTests {
         @Test("rendered once, as a widget does: configure, load, then one image with the web font")
         func widgetRender() async throws {
             let seed = fonts()
-            try await seed.load("Lobster")
+            try await seed.loadOrThrow("Lobster")
             let widget = WebFonts(configuration: .init(session: server.makeSession()), registrar: CoreTextRegistrar(),
                                   fileOperations: DiskFileOperations(), root: directory.url, logSink: RecordingLogSink())
             widget.configure(.init(session: server.makeSession()))
             let requests = server.requests.count
-            try await widget.load("Lobster", styles: [.regular])
+            try await widget.loadOrThrow("Lobster", styles: [.regular])
             #expect(server.requests.count == requests)
             let settled = AsyncLatch()
             let once = pixels(image(webText(settled: settled), fonts: widget))
@@ -94,7 +94,7 @@ extension IntegrationTests {
         @Test("the default fallback grows with Dynamic Type as the web font does; a fixed size does not")
         func dynamicType() async throws {
             let fonts = fonts()
-            try await fonts.load("Lobster")
+            try await fonts.loadOrThrow("Lobster")
             func width(_ view: some View, _ size: DynamicTypeSize, _ fonts: WebFonts?) -> Int { image(view, fonts: fonts, sizeCategory: size)?.width ?? 0 }
             let large = AsyncLatch(), huge = AsyncLatch()
             let webGrowth = Double(width(webText(settled: huge), .accessibility5, fonts)) / Double(width(webText(settled: large), .large, fonts))

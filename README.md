@@ -21,7 +21,7 @@ bundled font.
 ## Installation
 
 ```swift
-.package(url: "https://github.com/ItzNotABug/WebFontKit.git", from: "1.1.0")
+.package(url: "https://github.com/ItzNotABug/WebFontKit.git", from: "2.0.0")
 ```
 
 In Xcode: **File › Add Package Dependencies…**, paste the URL, and add the `WebFontKit` product.
@@ -62,7 +62,7 @@ Text("Hello").font(web: "Pacifico", size: 28) { phase in
 Load first, then use Apple's APIs:
 
 ```swift
-try await WebFonts.shared.load("Inter", styles: [.regular, .bold])
+await WebFonts.shared.load("Inter", styles: [.regular, .bold])
 label.font = UIFont(name: "Inter", size: 17)
 ```
 

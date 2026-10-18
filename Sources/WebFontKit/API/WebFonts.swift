@@ -5,7 +5,7 @@ import OSLog
 /// so Apple's own font APIs draw them.
 ///
 /// ```swift
-/// try await WebFonts.shared.load("Lobster")
+/// await WebFonts.shared.load("Lobster")
 /// Text("Hello").font(.custom("Lobster", size: 24))
 /// ```
 public final class WebFonts: Sendable {
@@ -139,15 +139,23 @@ public final class WebFonts: Sendable {
         }
     }
 
-    /// Loads one family's styles: from memory, from disk, or from the source.
-    /// All or nothing: if any style is missing, nothing is stored and it throws `.notFound`.
+    /// Loads one family's styles, each on its own; never throws. A cancelled or overtaken load returns
+    /// no results, and a failed style is fetched again by the next `load`, never automatically.
     ///
     /// ```swift
-    /// try await WebFonts.shared.load("Inter", styles: [.regular, .bold])
+    /// let results = await WebFonts.shared.load("Inter", styles: [.regular, .bold])
+    /// if case .failure(let error)? = results[.bold] { print(error) }
     /// ```
     @concurrent
-    public func load(_ family: String, styles: [FontStyle] = [.regular]) async throws {
-        _ = try await loadRecordingEpochs(family, styles: styles)
+    @discardableResult
+    public func load(_ family: String, styles: [FontStyle] = [.regular]) async -> FontStyleResults {
+        var seen = Set<FontStyle>()
+        let unique = styles.filter { seen.insert($0).inserted }
+        guard let failures = try? await loadRecordingEpochs(family, styles: unique).failures else {
+            return FontStyleResults([], expected: unique.count)
+        }
+        return FontStyleResults(unique.map { style in (style, failures[style].map { .failure($0) } ?? .success(())) },
+                                expected: unique.count)
     }
 
     /// Loads each family's regular style, several at once. Never throws: each
@@ -169,14 +177,10 @@ public final class WebFonts: Sendable {
             func startNext() -> Bool {
                 guard !Task.isCancelled, let family = pending.next() else { return false }
                 group.addTask { [self] in
-                    do {
-                        try await load(family)
-                        return (family, .success(()))
-                    } catch let error as WebFontError {
-                        return (family, .failure(error))
-                    } catch {
+                    guard let failures = try? await loadRecordingEpochs(family, styles: [.regular]).failures else {
                         return (family, nil)
                     }
+                    return (family, failures[.regular].map { .failure($0) } ?? .success(()))
                 }
                 return true
             }
