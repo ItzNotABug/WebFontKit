@@ -67,6 +67,20 @@ jobs:
     steps:
       - uses: actions/checkout@v7
 
+      - name: Runner
+        id: runner
+        run: |
+          echo "$(sysctl -n machdep.cpu.brand_string), $(sysctl -n hw.ncpu) cores, load $(sysctl -n vm.loadavg)"
+          xcode=$(basename "${DEVELOPER_DIR%/Contents/Developer}" .app)
+          echo "cache-key=modules-${{ matrix.name }}-$ImageVersion-$xcode" >> "$GITHUB_OUTPUT"
+
+      - name: Restore the module cache
+        id: modules
+        uses: actions/cache/restore@v6
+        with:
+          path: .build/arm64-apple-macosx/debug/ModuleCache
+          key: ${{ steps.runner.outputs.cache-key }}
+
       - name: No unsafeFlags in Package.swift
         run: |
           manifest=$(swift package dump-package)
@@ -76,7 +90,14 @@ jobs:
         run: |
           source scripts/common.sh
           swiftpm_no_warnings test with_timeout 600 swift test --skip WebFontKitPerformanceTests \
-            -Xswiftc -warnings-as-errors ${{ matrix.flags }}
+            --disable-index-store -Xswiftc -warnings-as-errors ${{ matrix.flags }}
+
+      - name: Save the module cache
+        if: steps.modules.outputs.cache-hit != 'true'
+        uses: actions/cache/save@v6
+        with:
+          path: .build/arm64-apple-macosx/debug/ModuleCache
+          key: ${{ steps.runner.outputs.cache-key }}
 
       - name: Upload logs
         if: failure()
