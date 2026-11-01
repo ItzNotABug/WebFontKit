@@ -23,7 +23,10 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
+      # Pushes and PRs made with GITHUB_TOKEN don't start CI; this token's do.
       - uses: actions/checkout@v7
+        with:
+          token: ${{ secrets.RECKON_TOKEN }}
 
       - name: Reckon
         id: reckon
@@ -33,6 +36,7 @@ jobs:
         if: steps.reckon.outputs.changed == 'true' && github.ref == 'refs/heads/main'
         env:
           GH_TOKEN: ${{ github.token }}
+          RECKON_TOKEN: ${{ secrets.RECKON_TOKEN }}
         run: |
           open=$(gh pr view catalog-refresh --json state -q .state 2>/dev/null || true)
           if [ "$open" = OPEN ] && git fetch -q origin catalog-refresh; then
@@ -54,10 +58,10 @@ jobs:
           if [ "$open" = OPEN ]; then
             gh pr edit catalog-refresh --body-file "$RUNNER_TEMP/reckon.md"
           else
-            gh pr create --head catalog-refresh --base main --title "Refresh the Google Fonts catalogue" \
-              --body-file "$RUNNER_TEMP/reckon.md" --assignee "$GITHUB_REPOSITORY_OWNER"
+            GH_TOKEN=$RECKON_TOKEN gh pr create --head catalog-refresh --base main \
+              --title "Refresh the Google Fonts catalogue" --body-file "$RUNNER_TEMP/reckon.md" \
+              --assignee "$GITHUB_REPOSITORY_OWNER"
           fi
-          gh workflow run ci.yml --ref catalog-refresh
 
       - name: Close a refresh PR main no longer needs
         if: steps.reckon.outputs.changed == 'false' && github.ref == 'refs/heads/main'
