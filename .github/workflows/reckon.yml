@@ -8,6 +8,7 @@ on:
 permissions:
   contents: write
   pull-requests: write
+  issues: write
   actions: write
 
 concurrency:
@@ -53,7 +54,8 @@ jobs:
           if [ "$open" = OPEN ]; then
             gh pr edit catalog-refresh --body-file "$RUNNER_TEMP/reckon.md"
           else
-            gh pr create --head catalog-refresh --base main --title "Refresh the Google Fonts catalogue" --body-file "$RUNNER_TEMP/reckon.md"
+            gh pr create --head catalog-refresh --base main --title "Refresh the Google Fonts catalogue" \
+              --body-file "$RUNNER_TEMP/reckon.md" --assignee "$GITHUB_REPOSITORY_OWNER"
           fi
           gh workflow run ci.yml --ref catalog-refresh
 
