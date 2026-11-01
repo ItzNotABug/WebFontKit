@@ -1,6 +1,7 @@
 # WebFontKit
 
 [![CI](https://github.com/ItzNotABug/WebFontKit/actions/workflows/ci.yml/badge.svg)](https://github.com/ItzNotABug/WebFontKit/actions/workflows/ci.yml)
+[![Release](https://img.shields.io/github/v/release/ItzNotABug/WebFontKit)](https://github.com/ItzNotABug/WebFontKit/releases/latest)
 [![Swift 6.2](https://img.shields.io/badge/Swift-6.2-F05138?logo=swift&logoColor=white)](https://www.swift.org)
 [![Platforms](https://img.shields.io/badge/platforms-iOS%2017%2B%20%7C%20macOS%2014%2B-0A84FF?logo=apple&logoColor=white)](#installation)
 [![License](https://img.shields.io/badge/license-Apache%202.0-blue)](LICENSE)
