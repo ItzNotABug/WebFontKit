@@ -17,6 +17,7 @@ concurrency:
 env:
   CATALOGUE: Sources/WebFontKit/Resources/GoogleFonts.catalog
   LISTING: Tests/Fixtures/catalog/shipped.tsv
+  VERSION_FILE: Sources/WebFontKit/Network/LibraryVersion.swift
 
 jobs:
   reckon:
@@ -34,11 +35,14 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
+          next=$(scripts/bump.sh)
+          if [ -n "$next" ]; then echo "Bumps the library version to $next." >> "$RUNNER_TEMP/reckon.md"; fi
           open=$(gh pr view catalog-refresh --json state -q .state 2>/dev/null || true)
           if [ "$open" = OPEN ] && git fetch -q origin catalog-refresh; then
             git show FETCH_HEAD:"$CATALOGUE" > "$RUNNER_TEMP/open.catalog"
             if cmp -s <(head -c 8 "$CATALOGUE"; tail -c +13 "$CATALOGUE") \
-                      <(head -c 8 "$RUNNER_TEMP/open.catalog"; tail -c +13 "$RUNNER_TEMP/open.catalog"); then
+                      <(head -c 8 "$RUNNER_TEMP/open.catalog"; tail -c +13 "$RUNNER_TEMP/open.catalog") &&
+               git diff --quiet FETCH_HEAD -- "$VERSION_FILE"; then
               gh pr edit catalog-refresh --body-file "$RUNNER_TEMP/reckon.md"
               if [ "$(gh run list --workflow ci.yml --branch catalog-refresh --limit 1 --json conclusion -q '.[0].conclusion')" != success ]; then
                 gh workflow run ci.yml --ref catalog-refresh
@@ -49,7 +53,7 @@ jobs:
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git switch -C catalog-refresh
-          git commit -qm "Refresh the Google Fonts catalogue" -- "$CATALOGUE" "$LISTING"
+          git commit -qm "Refresh the Google Fonts catalogue" -- "$CATALOGUE" "$LISTING" "$VERSION_FILE"
           git push -qf origin catalog-refresh
           if [ "$open" = OPEN ]; then
             gh pr edit catalog-refresh --body-file "$RUNNER_TEMP/reckon.md"
