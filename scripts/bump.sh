@@ -8,7 +8,12 @@ set -euo pipefail
 
 file="$(dirname "$0")/../Sources/WebFontKit/Network/LibraryVersion.swift"
 current=$(sed -n 's/^let libraryVersion = "\(.*\)"$/\1/p' "$file")
-released=$(gh release view --json tagName -q .tagName 2>/dev/null || true)
+# No release yet is fine; a failed lookup must not drop a bump already in the refresh PR.
+if ! released=$(gh release view --json tagName -q .tagName 2>&1); then
+    [[ $released == *"release not found"* ]] && exit 0
+    echo "$released" >&2
+    exit 1
+fi
 [ -n "$current" ] && [ "$current" = "${released#v}" ] || exit 0
 
 next="${current%.*}.$((${current##*.} + 1))"
