@@ -1,5 +1,5 @@
 /// Set by hand before each release.
-let libraryVersion = "2.0.3"
+let libraryVersion = "2.0.4"
 
 /// Never a browser's: browsers get per-script WOFF2 slices.
 let libraryUserAgent = "WebFontKit/" + libraryVersion
